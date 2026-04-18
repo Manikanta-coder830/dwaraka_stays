@@ -20,7 +20,7 @@ import {
   where,
 } from 'firebase/firestore';
 
-const HOSTELS = ['Dwaraka 1', 'Dwaraka 2', 'Dwaraka 3', 'Dwaraka 4'];
+
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBO5WdFQIYpwCylsIFIkAvV6ZHnp5imd-o',
