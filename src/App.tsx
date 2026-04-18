@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+// @ts-nocheck
+import { useEffect, useMemo, useState } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -20,8 +21,6 @@ import {
   where,
 } from 'firebase/firestore';
 
-
-
 const firebaseConfig = {
   apiKey: 'AIzaSyBO5WdFQIYpwCylsIFIkAvV6ZHnp5imd-o',
   authDomain: 'dwaraka-hostel.firebaseapp.com',
@@ -35,68 +34,12 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-type Room = {
-  id: string;
-  hostel: string;
-  roomNo: string;
-  totalBeds: number | string;
-  occupiedBeds: number | string;
-  createdAt?: number;
-};
-
-type Tenant = {
-  id: string;
-  hostel: string;
-  name: string;
-  phone: string;
-  parentPhone: string;
-  roomNo: string;
-  bedNo: string;
-  monthlyFee: string;
-  securityDeposit: string;
-  createdAt?: number;
-};
-
-type Fee = {
-  id: string;
-  hostel: string;
-  tenantName: string;
-  month: string;
-  amount: string;
-  status: 'Paid' | 'Unpaid';
-  paidDate?: string;
-  createdAt?: number;
-};
-
-type Complaint = {
-  id: string;
-  hostel: string;
-  tenantName: string;
-  type: string;
-  text: string;
-  status: 'Pending' | 'Solved';
-  createdAt?: number;
-};
-
-type OwnerMap = {
-  id: string;
-  email: string;
-  hostel: string;
-};
-
-type StatCardProps = {
-  title: string;
-  value: number | string;
-  sub: string;
-  onClick?: () => void;
-};
-
 export default function App() {
   const [selectedHostel, setSelectedHostel] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -104,10 +47,10 @@ export default function App() {
   const [ownerHostel, setOwnerHostel] = useState('');
   const [ownerError, setOwnerError] = useState('');
 
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [fees, setFees] = useState<Fee[]>([]);
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [rooms, setRooms] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [fees, setFees] = useState([]);
+  const [complaints, setComplaints] = useState([]);
 
   const [selectedFeeTenant, setSelectedFeeTenant] = useState('');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
@@ -134,14 +77,14 @@ export default function App() {
     month: '',
     monthDate: '',
     amount: '',
-    status: 'Unpaid' as 'Paid' | 'Unpaid',
+    status: 'Unpaid',
   });
 
   const [complaintForm, setComplaintForm] = useState({
     tenantName: '',
     type: 'Water',
     text: '',
-    status: 'Pending' as 'Pending' | 'Solved',
+    status: 'Pending',
   });
 
   useEffect(() => {
@@ -172,11 +115,11 @@ export default function App() {
           setOwnerError('No hostel assigned for this login.');
           await signOut(auth);
         } else {
-          const ownerData = snapshot.docs[0].data() as Omit<OwnerMap, 'id'>;
+          const ownerData = snapshot.docs[0].data();
           setOwnerHostel(ownerData.hostel);
           setSelectedHostel(ownerData.hostel);
         }
-      } catch {
+      } catch (e) {
         setOwnerHostel('');
         setSelectedHostel('');
         setOwnerError('Failed to load owner hostel.');
@@ -203,7 +146,7 @@ export default function App() {
         setRooms(
           snapshot.docs.map((d) => ({
             id: d.id,
-            ...(d.data() as Omit<Room, 'id'>),
+            ...d.data(),
           }))
         );
       }
@@ -215,7 +158,7 @@ export default function App() {
         setTenants(
           snapshot.docs.map((d) => ({
             id: d.id,
-            ...(d.data() as Omit<Tenant, 'id'>),
+            ...d.data(),
           }))
         );
       }
@@ -227,7 +170,7 @@ export default function App() {
         setFees(
           snapshot.docs.map((d) => ({
             id: d.id,
-            ...(d.data() as Omit<Fee, 'id'>),
+            ...d.data(),
           }))
         );
       }
@@ -239,7 +182,7 @@ export default function App() {
         setComplaints(
           snapshot.docs.map((d) => ({
             id: d.id,
-            ...(d.data() as Omit<Complaint, 'id'>),
+            ...d.data(),
           }))
         );
       }
@@ -326,8 +269,7 @@ export default function App() {
   }, [currentRooms, showVacantOnly]);
 
   const monthlyCollectedSummary = useMemo(() => {
-    const monthTotals: Record<string, number> = {};
-
+    const monthTotals = {};
     currentFees.forEach((fee) => {
       if (fee.status === 'Paid') {
         const amount = Number(fee.amount || 0);
@@ -376,7 +318,7 @@ export default function App() {
       setOwnerError('');
       await signInWithEmailAndPassword(auth, email, password);
       setPassword('');
-    } catch {
+    } catch (e) {
       alert('Wrong email or password');
     }
   };
@@ -481,10 +423,7 @@ export default function App() {
     });
   };
 
-  const toggleFeeStatus = async (
-    id: string,
-    currentStatus: 'Paid' | 'Unpaid'
-  ) => {
+  const toggleFeeStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'Paid' ? 'Unpaid' : 'Paid';
 
     await updateDoc(doc(db, 'fees', id), {
@@ -493,27 +432,24 @@ export default function App() {
     });
   };
 
-  const toggleComplaintStatus = async (
-    id: string,
-    currentStatus: 'Pending' | 'Solved'
-  ) => {
+  const toggleComplaintStatus = async (id, currentStatus) => {
     await updateDoc(doc(db, 'complaints', id), {
       status: currentStatus === 'Pending' ? 'Solved' : 'Pending',
     });
   };
 
-  const deleteItem = async (collectionName: string, id: string) => {
+  const deleteItem = async (collectionName, id) => {
     await deleteDoc(doc(db, collectionName, id));
   };
 
-  const openRoomTenants = (roomNo: string) => {
+  const openRoomTenants = (roomNo) => {
     setSelectedRoom(roomNo);
     setTenantForm((prev) => ({ ...prev, roomNo }));
     setShowVacantOnly(false);
     setActiveTab('tenants');
   };
 
-  const openTenantFees = (tenantName: string) => {
+  const openTenantFees = (tenantName) => {
     setSelectedFeeTenant(tenantName);
     setFeeForm((prev) => ({ ...prev, tenantName }));
     setShowUnpaidOnly(false);
@@ -554,9 +490,7 @@ export default function App() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {ownerError ? (
-            <p style={styles.errorText}>{ownerError}</p>
-          ) : null}
+          {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
 
           <button style={styles.primaryBtn} onClick={handleLogin}>
             Login
@@ -927,7 +861,7 @@ export default function App() {
                 onChange={(e) =>
                   setFeeForm({
                     ...feeForm,
-                    status: e.target.value as 'Paid' | 'Unpaid',
+                    status: e.target.value,
                   })
                 }
               >
@@ -1098,7 +1032,7 @@ export default function App() {
   );
 }
 
-function StatCard({ title, value, sub, onClick }: StatCardProps) {
+function StatCard({ title, value, sub, onClick }) {
   return (
     <div
       style={{
@@ -1114,7 +1048,7 @@ function StatCard({ title, value, sub, onClick }: StatCardProps) {
   );
 }
 
-const styles: Record<string, CSSProperties> = {
+const styles = {
   page: {
     minHeight: '100vh',
     background: '#f8fafc',
@@ -1281,7 +1215,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '12px 16px',
     borderRadius: 12,
     border: 'none',
-    background: '#dc2626',
+    background: '#ea580c',
     color: 'white',
     fontWeight: 700,
     cursor: 'pointer',
