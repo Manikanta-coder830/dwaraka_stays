@@ -20,7 +20,6 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-
 const firebaseConfig = {
   apiKey: 'AIzaSyBO5WdFQIYpwCylsIFIkAvV6ZHnp5imd-o',
   authDomain: 'dwaraka-hostel.firebaseapp.com',
