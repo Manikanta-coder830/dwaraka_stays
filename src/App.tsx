@@ -11,11 +11,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 
 const HOSTELS = ['Dwaraka 1', 'Dwaraka 2', 'Dwaraka 3', 'Dwaraka 4'];
@@ -51,6 +53,7 @@ type Tenant = {
   roomNo: string;
   bedNo: string;
   monthlyFee: string;
+  securityDeposit: string;
   createdAt?: number;
 };
 
@@ -75,15 +78,21 @@ type Complaint = {
   createdAt?: number;
 };
 
+type OwnerMap = {
+  id: string;
+  email: string;
+  hostel: string;
+};
+
 type StatCardProps = {
   title: string;
-  value: number;
+  value: number | string;
   sub: string;
   onClick?: () => void;
 };
 
 export default function App() {
-  const [selectedHostel, setSelectedHostel] = useState('Dwaraka 1');
+  const [selectedHostel, setSelectedHostel] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
 
@@ -91,6 +100,9 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
+  const [ownerLoading, setOwnerLoading] = useState(false);
+  const [ownerHostel, setOwnerHostel] = useState('');
+  const [ownerError, setOwnerError] = useState('');
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -114,6 +126,7 @@ export default function App() {
     roomNo: '',
     bedNo: '',
     monthlyFee: '',
+    securityDeposit: '',
   });
 
   const [feeForm, setFeeForm] = useState({
@@ -132,15 +145,51 @@ export default function App() {
   });
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       setAuthLoading(false);
+
+      if (!u?.email) {
+        setOwnerHostel('');
+        setSelectedHostel('');
+        setOwnerError('');
+        return;
+      }
+
+      setOwnerLoading(true);
+      setOwnerError('');
+
+      try {
+        const ownerQuery = query(
+          collection(db, 'owners'),
+          where('email', '==', u.email)
+        );
+        const snapshot = await getDocs(ownerQuery);
+
+        if (snapshot.empty) {
+          setOwnerHostel('');
+          setSelectedHostel('');
+          setOwnerError('No hostel assigned for this login.');
+          await signOut(auth);
+        } else {
+          const ownerData = snapshot.docs[0].data() as Omit<OwnerMap, 'id'>;
+          setOwnerHostel(ownerData.hostel);
+          setSelectedHostel(ownerData.hostel);
+        }
+      } catch {
+        setOwnerHostel('');
+        setSelectedHostel('');
+        setOwnerError('Failed to load owner hostel.');
+      } finally {
+        setOwnerLoading(false);
+      }
     });
+
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !selectedHostel) {
       setRooms([]);
       setTenants([]);
       setFees([]);
@@ -202,7 +251,7 @@ export default function App() {
       unsubFees();
       unsubComplaints();
     };
-  }, [user]);
+  }, [user, selectedHostel]);
 
   useEffect(() => {
     setSelectedRoom('');
@@ -266,12 +315,7 @@ export default function App() {
   const displayedFeeRecords = useMemo(() => {
     const base = selectedFeeTenant ? selectedTenantFeeRecords : currentFees;
     return showUnpaidOnly ? base.filter((f) => f.status === 'Unpaid') : base;
-  }, [
-    selectedTenantFeeRecords,
-    currentFees,
-    selectedFeeTenant,
-    showUnpaidOnly,
-  ]);
+  }, [selectedTenantFeeRecords, currentFees, selectedFeeTenant, showUnpaidOnly]);
 
   const displayedRooms = useMemo(() => {
     return showVacantOnly
@@ -280,6 +324,23 @@ export default function App() {
         )
       : currentRooms;
   }, [currentRooms, showVacantOnly]);
+
+  const monthlyCollectedSummary = useMemo(() => {
+    const monthTotals: Record<string, number> = {};
+
+    currentFees.forEach((fee) => {
+      if (fee.status === 'Paid') {
+        const amount = Number(fee.amount || 0);
+        monthTotals[fee.month] = (monthTotals[fee.month] || 0) + amount;
+      }
+    });
+
+    return Object.entries(monthTotals)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([month, total]) => ({ month, total }));
+  }, [currentFees]);
+
+  const latestCollectedMonth = monthlyCollectedSummary[0];
 
   const stats = useMemo(() => {
     const totalRooms = currentRooms.length;
@@ -312,6 +373,7 @@ export default function App() {
 
   const handleLogin = async () => {
     try {
+      setOwnerError('');
       await signInWithEmailAndPassword(auth, email, password);
       setPassword('');
     } catch {
@@ -321,6 +383,8 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    setOwnerHostel('');
+    setSelectedHostel('');
   };
 
   const addRoom = async () => {
@@ -348,6 +412,7 @@ export default function App() {
       roomNo: tenantForm.roomNo,
       bedNo: tenantForm.bedNo,
       monthlyFee: tenantForm.monthlyFee,
+      securityDeposit: tenantForm.securityDeposit,
       createdAt: Date.now(),
     });
 
@@ -367,6 +432,7 @@ export default function App() {
       roomNo: selectedRoom || '',
       bedNo: '',
       monthlyFee: '',
+      securityDeposit: '',
     });
   };
 
@@ -454,7 +520,7 @@ export default function App() {
     setActiveTab('fees');
   };
 
-  if (authLoading) {
+  if (authLoading || ownerLoading) {
     return (
       <div style={styles.authPage}>
         <div style={styles.authCard}>
@@ -488,6 +554,10 @@ export default function App() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
+          {ownerError ? (
+            <p style={styles.errorText}>{ownerError}</p>
+          ) : null}
+
           <button style={styles.primaryBtn} onClick={handleLogin}>
             Login
           </button>
@@ -504,25 +574,18 @@ export default function App() {
             <p style={styles.small}>DWARAKA STAYS</p>
             <h1 style={styles.title}>Firebase Hostel Management</h1>
             <p style={styles.subtitle}>
-              Click tenant name for fee history. Click Vacant Beds or Pending
-              Fees cards for details.
+              Logged in hostel: {ownerHostel || selectedHostel}
             </p>
           </div>
 
           <div style={styles.heroRight}>
             <div style={styles.switchBox}>
-              <label style={styles.label}>Choose Hostel</label>
-              <select
+              <label style={styles.label}>Assigned Hostel</label>
+              <input
+                style={styles.readOnlyBox}
                 value={selectedHostel}
-                onChange={(e) => setSelectedHostel(e.target.value)}
-                style={styles.select}
-              >
-                {HOSTELS.map((hostel) => (
-                  <option key={hostel} value={hostel}>
-                    {hostel}
-                  </option>
-                ))}
-              </select>
+                readOnly
+              />
             </div>
 
             <button style={styles.logoutBtn} onClick={handleLogout}>
@@ -562,6 +625,33 @@ export default function App() {
               setShowVacantOnly(false);
             }}
           />
+        </div>
+
+        <div style={styles.collectionBanner}>
+          <div style={styles.collectionCard}>
+            <p style={styles.collectionTitle}>Total Collected</p>
+            <h3 style={styles.collectionValue}>
+              ₹{latestCollectedMonth ? latestCollectedMonth.total : 0}
+            </h3>
+            <span style={styles.collectionSub}>
+              {latestCollectedMonth
+                ? `${latestCollectedMonth.month}`
+                : 'No paid records yet'}
+            </span>
+          </div>
+
+          <div style={styles.collectionCard}>
+            <p style={styles.collectionTitle}>Collection Summary</p>
+            {monthlyCollectedSummary.length === 0 ? (
+              <span style={styles.collectionSub}>No paid data yet</span>
+            ) : (
+              monthlyCollectedSummary.slice(0, 3).map((item) => (
+                <p key={item.month} style={styles.summaryRow}>
+                  {item.month}: ₹{item.total}
+                </p>
+              ))
+            )}
+          </div>
         </div>
 
         <div style={styles.tabs}>
@@ -626,9 +716,7 @@ export default function App() {
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Room Availability</h2>
               {showVacantOnly ? (
-                <p style={styles.filterNote}>
-                  Showing only rooms with vacant beds
-                </p>
+                <p style={styles.filterNote}>Showing only rooms with vacant beds</p>
               ) : null}
 
               {displayedRooms.length === 0 ? (
@@ -651,8 +739,7 @@ export default function App() {
                     </div>
                     <div style={styles.rowActions}>
                       <span style={styles.badge}>
-                        {Number(room.totalBeds) - Number(room.occupiedBeds)}{' '}
-                        Vacant
+                        {Number(room.totalBeds) - Number(room.occupiedBeds)} Vacant
                       </span>
                       <button
                         style={styles.smallBtn}
@@ -724,6 +811,14 @@ export default function App() {
                   setTenantForm({ ...tenantForm, monthlyFee: e.target.value })
                 }
               />
+              <input
+                style={styles.input}
+                placeholder="Security Deposit"
+                value={tenantForm.securityDeposit}
+                onChange={(e) =>
+                  setTenantForm({ ...tenantForm, securityDeposit: e.target.value })
+                }
+              />
               <button style={styles.primaryBtn} onClick={addTenant}>
                 Save Tenant
               </button>
@@ -753,8 +848,11 @@ export default function App() {
                         {tenant.name}
                       </button>
                       <p style={styles.rowSub}>
-                        {tenant.phone || 'No phone'} | Room {tenant.roomNo} |
-                        Bed {tenant.bedNo}
+                        {tenant.phone || 'No phone'} | Room {tenant.roomNo} | Bed {tenant.bedNo}
+                      </p>
+                      <p style={styles.rowSub}>
+                        Monthly Fee: ₹{tenant.monthlyFee || 0} | Security Deposit: ₹
+                        {tenant.securityDeposit || 0}
                       </p>
                     </div>
 
@@ -1061,6 +1159,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     marginBottom: 12,
   },
+  readOnlyBox: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 12,
+    border: '1px solid #94a3b8',
+    background: '#e2e8f0',
+    fontSize: 14,
+    color: '#0f172a',
+    boxSizing: 'border-box',
+  },
   tabs: {
     display: 'flex',
     gap: 8,
@@ -1094,6 +1202,38 @@ const styles: Record<string, CSSProperties> = {
   statTitle: { margin: 0, color: '#64748b' },
   statValue: { margin: '10px 0 4px', fontSize: 30 },
   statSub: { color: '#64748b', fontSize: 13 },
+  collectionBanner: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))',
+    gap: 16,
+    marginBottom: 20,
+  },
+  collectionCard: {
+    background: 'white',
+    borderRadius: 20,
+    padding: 20,
+    boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
+  },
+  collectionTitle: {
+    margin: 0,
+    color: '#64748b',
+    fontSize: 14,
+  },
+  collectionValue: {
+    margin: '10px 0 6px',
+    fontSize: 28,
+    color: '#0f172a',
+  },
+  collectionSub: {
+    color: '#64748b',
+    fontSize: 13,
+  },
+  summaryRow: {
+    margin: '6px 0 0',
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: 600,
+  },
   grid2: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
@@ -1224,5 +1364,12 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 0,
     marginBottom: 20,
     color: '#64748b',
+  },
+  errorText: {
+    marginTop: 0,
+    marginBottom: 12,
+    color: '#b91c1c',
+    fontSize: 14,
+    fontWeight: 600,
   },
 };
