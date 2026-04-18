@@ -20,6 +20,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
+
 const firebaseConfig = {
   apiKey: 'AIzaSyBO5WdFQIYpwCylsIFIkAvV6ZHnp5imd-o',
   authDomain: 'dwaraka-hostel.firebaseapp.com',
@@ -32,6 +33,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+function monthToTimestamp(monthLabel) {
+  const d = new Date(`1 ${monthLabel}`);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
 
 export default function App() {
   const [selectedHostel, setSelectedHostel] = useState('');
@@ -269,6 +275,7 @@ export default function App() {
 
   const monthlyCollectedSummary = useMemo(() => {
     const monthTotals = {};
+
     currentFees.forEach((fee) => {
       if (fee.status === 'Paid') {
         const amount = Number(fee.amount || 0);
@@ -277,11 +284,18 @@ export default function App() {
     });
 
     return Object.entries(monthTotals)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([month, total]) => ({ month, total }));
+      .map(([month, total]) => ({ month, total }))
+      .sort((a, b) => monthToTimestamp(b.month) - monthToTimestamp(a.month));
   }, [currentFees]);
 
-  const latestCollectedMonth = monthlyCollectedSummary[0];
+  const currentMonthLabel = new Date().toLocaleString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const currentMonthCollected =
+    monthlyCollectedSummary.find((item) => item.month === currentMonthLabel)
+      ?.total || 0;
 
   const stats = useMemo(() => {
     const totalRooms = currentRooms.length;
@@ -329,11 +343,14 @@ export default function App() {
   };
 
   const addRoom = async () => {
-    if (!roomForm.roomNo || !roomForm.totalBeds) return;
+    if (!roomForm.roomNo || !roomForm.totalBeds) {
+      alert('Enter room number and total beds');
+      return;
+    }
 
     await addDoc(collection(db, 'rooms'), {
       hostel: selectedHostel,
-      roomNo: roomForm.roomNo,
+      roomNo: roomForm.roomNo.trim(),
       totalBeds: Number(roomForm.totalBeds),
       occupiedBeds: Number(roomForm.occupiedBeds || 0),
       createdAt: Date.now(),
@@ -343,28 +360,60 @@ export default function App() {
   };
 
   const addTenant = async () => {
-    if (!tenantForm.name || !tenantForm.roomNo || !tenantForm.bedNo) return;
+    if (!tenantForm.name || !tenantForm.roomNo || !tenantForm.bedNo) {
+      alert('Fill tenant name, room number and bed number');
+      return;
+    }
+
+    const roomMatch = currentRooms.find(
+      (item) => item.roomNo === tenantForm.roomNo
+    );
+
+    if (!roomMatch) {
+      alert('Room not found');
+      return;
+    }
+
+    const totalBeds = Number(roomMatch.totalBeds || 0);
+    const tenantsInRoom = currentTenants.filter(
+      (item) => item.roomNo === tenantForm.roomNo
+    );
+    const effectiveOccupied = Math.max(
+      Number(roomMatch.occupiedBeds || 0),
+      tenantsInRoom.length
+    );
+
+    if (effectiveOccupied >= totalBeds) {
+      alert('Room capacity is full. Cannot add more tenants.');
+      return;
+    }
+
+    const sameBedExists = tenantsInRoom.some(
+      (item) =>
+        String(item.bedNo).trim().toLowerCase() ===
+        String(tenantForm.bedNo).trim().toLowerCase()
+    );
+
+    if (sameBedExists) {
+      alert('This bed number is already occupied in the room.');
+      return;
+    }
 
     await addDoc(collection(db, 'tenants'), {
       hostel: selectedHostel,
-      name: tenantForm.name,
+      name: tenantForm.name.trim(),
       phone: tenantForm.phone,
       parentPhone: tenantForm.parentPhone,
-      roomNo: tenantForm.roomNo,
-      bedNo: tenantForm.bedNo,
+      roomNo: tenantForm.roomNo.trim(),
+      bedNo: tenantForm.bedNo.trim(),
       monthlyFee: tenantForm.monthlyFee,
       securityDeposit: tenantForm.securityDeposit,
       createdAt: Date.now(),
     });
 
-    const roomMatch = currentRooms.find(
-      (item) => item.roomNo === tenantForm.roomNo
-    );
-    if (roomMatch) {
-      await updateDoc(doc(db, 'rooms', roomMatch.id), {
-        occupiedBeds: Number(roomMatch.occupiedBeds || 0) + 1,
-      });
-    }
+    await updateDoc(doc(db, 'rooms', roomMatch.id), {
+      occupiedBeds: effectiveOccupied + 1,
+    });
 
     setTenantForm({
       name: '',
@@ -378,7 +427,10 @@ export default function App() {
   };
 
   const addFee = async () => {
-    if (!feeForm.tenantName || !feeForm.month || !feeForm.amount) return;
+    if (!feeForm.tenantName || !feeForm.month || !feeForm.amount) {
+      alert('Select tenant, month and amount');
+      return;
+    }
 
     await addDoc(collection(db, 'fees'), {
       hostel: selectedHostel,
@@ -403,7 +455,10 @@ export default function App() {
   };
 
   const addComplaint = async () => {
-    if (!complaintForm.tenantName || !complaintForm.text) return;
+    if (!complaintForm.tenantName || !complaintForm.text) {
+      alert('Select tenant and enter complaint');
+      return;
+    }
 
     await addDoc(collection(db, 'complaints'), {
       hostel: selectedHostel,
@@ -439,6 +494,60 @@ export default function App() {
 
   const deleteItem = async (collectionName, id) => {
     await deleteDoc(doc(db, collectionName, id));
+  };
+
+  const deleteTenantWithRelatedData = async (tenant) => {
+    const confirmDelete = window.confirm(
+      `Delete ${tenant.name} and all related fee/complaint data?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const roomMatch = currentRooms.find((item) => item.roomNo === tenant.roomNo);
+      const tenantsInRoom = currentTenants.filter(
+        (item) => item.roomNo === tenant.roomNo
+      );
+
+      if (roomMatch) {
+        const currentOccupied = Math.max(
+          Number(roomMatch.occupiedBeds || 0),
+          tenantsInRoom.length
+        );
+        await updateDoc(doc(db, 'rooms', roomMatch.id), {
+          occupiedBeds: Math.max(0, currentOccupied - 1),
+        });
+      }
+
+      const feesQuery = query(
+        collection(db, 'fees'),
+        where('hostel', '==', selectedHostel),
+        where('tenantName', '==', tenant.name)
+      );
+      const feesSnapshot = await getDocs(feesQuery);
+      for (const feeDoc of feesSnapshot.docs) {
+        await deleteDoc(doc(db, 'fees', feeDoc.id));
+      }
+
+      const complaintsQuery = query(
+        collection(db, 'complaints'),
+        where('hostel', '==', selectedHostel),
+        where('tenantName', '==', tenant.name)
+      );
+      const complaintsSnapshot = await getDocs(complaintsQuery);
+      for (const complaintDoc of complaintsSnapshot.docs) {
+        await deleteDoc(doc(db, 'complaints', complaintDoc.id));
+      }
+
+      await deleteDoc(doc(db, 'tenants', tenant.id));
+
+      if (selectedFeeTenant === tenant.name) {
+        setSelectedFeeTenant('');
+      }
+
+      alert('Tenant and related records deleted successfully');
+    } catch (e) {
+      alert('Failed to delete tenant data');
+    }
   };
 
   const openRoomTenants = (roomNo) => {
@@ -563,14 +672,8 @@ export default function App() {
         <div style={styles.collectionBanner}>
           <div style={styles.collectionCard}>
             <p style={styles.collectionTitle}>Total Collected</p>
-            <h3 style={styles.collectionValue}>
-              ₹{latestCollectedMonth ? latestCollectedMonth.total : 0}
-            </h3>
-            <span style={styles.collectionSub}>
-              {latestCollectedMonth
-                ? `${latestCollectedMonth.month}`
-                : 'No paid records yet'}
-            </span>
+            <h3 style={styles.collectionValue}>₹{currentMonthCollected}</h3>
+            <span style={styles.collectionSub}>{currentMonthLabel}</span>
           </div>
 
           <div style={styles.collectionCard}>
@@ -578,7 +681,7 @@ export default function App() {
             {monthlyCollectedSummary.length === 0 ? (
               <span style={styles.collectionSub}>No paid data yet</span>
             ) : (
-              monthlyCollectedSummary.slice(0, 3).map((item) => (
+              monthlyCollectedSummary.slice(0, 6).map((item) => (
                 <p key={item.month} style={styles.summaryRow}>
                   {item.month}: ₹{item.total}
                 </p>
@@ -791,7 +894,7 @@ export default function App() {
 
                     <button
                       style={styles.smallBtn}
-                      onClick={() => deleteItem('tenants', tenant.id)}
+                      onClick={() => deleteTenantWithRelatedData(tenant)}
                     >
                       Delete
                     </button>
@@ -829,7 +932,6 @@ export default function App() {
                 value={feeForm.monthDate}
                 onChange={(e) => {
                   const selectedDate = e.target.value;
-
                   const formattedMonth = selectedDate
                     ? new Date(selectedDate).toLocaleString('en-US', {
                         month: 'long',
