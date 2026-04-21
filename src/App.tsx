@@ -34,9 +34,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-function monthToTimestamp(monthLabel) {
+function monthToTimestamp(monthLabel: string) {
   const d = new Date(`1 ${monthLabel}`);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function formatCurrency(amount: number | string) {
+  return `₹${Number(amount || 0)}`;
 }
 
 export default function App() {
@@ -44,7 +48,7 @@ export default function App() {
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
 
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -52,29 +56,43 @@ export default function App() {
   const [ownerHostel, setOwnerHostel] = useState('');
   const [ownerError, setOwnerError] = useState('');
 
-  const [rooms, setRooms] = useState([]);
-  const [tenants, setTenants] = useState([]);
-  const [fees, setFees] = useState([]);
-  const [complaints, setComplaints] = useState([]);
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [fees, setFees] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
 
   const [selectedFeeTenant, setSelectedFeeTenant] = useState('');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [showVacantOnly, setShowVacantOnly] = useState(false);
+  const [tenantSearch, setTenantSearch] = useState('');
+  const [roomSearch, setRoomSearch] = useState('');
+  const [feeSearch, setFeeSearch] = useState('');
+  const [complaintSearch, setComplaintSearch] = useState('');
 
   const [roomForm, setRoomForm] = useState({
     roomNo: '',
+    block: '',
+    roomType: '',
     totalBeds: '',
     occupiedBeds: '',
+    monthlyRentDefault: '',
+    status: 'Active',
   });
 
   const [tenantForm, setTenantForm] = useState({
     name: '',
     phone: '',
     parentPhone: '',
+    idNumber: '',
+    joiningDate: '',
     roomNo: '',
     bedNo: '',
     monthlyFee: '',
     securityDeposit: '',
+    advancePaid: '',
+    address: '',
+    notes: '',
+    status: 'Active',
   });
 
   const [feeForm, setFeeForm] = useState({
@@ -82,14 +100,24 @@ export default function App() {
     month: '',
     monthDate: '',
     amount: '',
+    paidAmount: '',
+    dueAmount: '',
+    dueDate: '',
+    paymentDate: '',
+    paymentMethod: 'Cash',
+    remarks: '',
     status: 'Unpaid',
   });
 
   const [complaintForm, setComplaintForm] = useState({
     tenantName: '',
+    roomNo: '',
     type: 'Water',
     text: '',
+    date: '',
+    priority: 'Medium',
     status: 'Pending',
+    resolvedDate: '',
   });
 
   useEffect(() => {
@@ -124,7 +152,7 @@ export default function App() {
           setOwnerHostel(ownerData.hostel);
           setSelectedHostel(ownerData.hostel);
         }
-      } catch (e) {
+      } catch {
         setOwnerHostel('');
         setSelectedHostel('');
         setOwnerError('Failed to load owner hostel.');
@@ -148,48 +176,28 @@ export default function App() {
     const unsubRooms = onSnapshot(
       query(collection(db, 'rooms'), orderBy('createdAt', 'desc')),
       (snapshot) => {
-        setRooms(
-          snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setRooms(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       }
     );
 
     const unsubTenants = onSnapshot(
       query(collection(db, 'tenants'), orderBy('createdAt', 'desc')),
       (snapshot) => {
-        setTenants(
-          snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setTenants(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       }
     );
 
     const unsubFees = onSnapshot(
       query(collection(db, 'fees'), orderBy('createdAt', 'desc')),
       (snapshot) => {
-        setFees(
-          snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setFees(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       }
     );
 
     const unsubComplaints = onSnapshot(
       query(collection(db, 'complaints'), orderBy('createdAt', 'desc')),
       (snapshot) => {
-        setComplaints(
-          snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setComplaints(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       }
     );
 
@@ -206,6 +214,10 @@ export default function App() {
     setSelectedFeeTenant('');
     setShowUnpaidOnly(false);
     setShowVacantOnly(false);
+    setTenantSearch('');
+    setRoomSearch('');
+    setFeeSearch('');
+    setComplaintSearch('');
 
     setTenantForm((prev) => ({ ...prev, roomNo: '' }));
     setFeeForm({
@@ -213,13 +225,23 @@ export default function App() {
       month: '',
       monthDate: '',
       amount: '',
+      paidAmount: '',
+      dueAmount: '',
+      dueDate: '',
+      paymentDate: '',
+      paymentMethod: 'Cash',
+      remarks: '',
       status: 'Unpaid',
     });
     setComplaintForm({
       tenantName: '',
+      roomNo: '',
       type: 'Water',
       text: '',
+      date: '',
+      priority: 'Medium',
       status: 'Pending',
+      resolvedDate: '',
     });
   }, [selectedHostel]);
 
@@ -243,10 +265,38 @@ export default function App() {
     [complaints, selectedHostel]
   );
 
+  const searchedRooms = useMemo(() => {
+    const list = showVacantOnly
+      ? currentRooms.filter(
+          (room) => Number(room.totalBeds) - Number(room.occupiedBeds) > 0
+        )
+      : currentRooms;
+
+    return list.filter((room) =>
+      `${room.roomNo} ${room.block || ''} ${room.roomType || ''}`
+        .toLowerCase()
+        .includes(roomSearch.toLowerCase())
+    );
+  }, [currentRooms, showVacantOnly, roomSearch]);
+
   const filteredTenants = useMemo(() => {
-    if (!selectedRoom) return currentTenants;
-    return currentTenants.filter((item) => item.roomNo === selectedRoom);
-  }, [currentTenants, selectedRoom]);
+    let list = currentTenants;
+
+    if (selectedRoom) {
+      list = list.filter((item) => item.roomNo === selectedRoom);
+    }
+
+    if (tenantSearch.trim()) {
+      const q = tenantSearch.toLowerCase();
+      list = list.filter((item) =>
+        `${item.name} ${item.roomNo} ${item.phone}`
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+
+    return list;
+  }, [currentTenants, selectedRoom, tenantSearch]);
 
   const tenantNames = useMemo(
     () => currentTenants.map((item) => item.name).filter(Boolean),
@@ -261,25 +311,44 @@ export default function App() {
   }, [currentFees, selectedFeeTenant]);
 
   const displayedFeeRecords = useMemo(() => {
-    const base = selectedFeeTenant ? selectedTenantFeeRecords : currentFees;
-    return showUnpaidOnly ? base.filter((f) => f.status === 'Unpaid') : base;
-  }, [selectedTenantFeeRecords, currentFees, selectedFeeTenant, showUnpaidOnly]);
+    let base = selectedFeeTenant ? selectedTenantFeeRecords : currentFees;
 
-  const displayedRooms = useMemo(() => {
-    return showVacantOnly
-      ? currentRooms.filter(
-          (room) => Number(room.totalBeds) - Number(room.occupiedBeds) > 0
-        )
-      : currentRooms;
-  }, [currentRooms, showVacantOnly]);
+    if (showUnpaidOnly) {
+      base = base.filter((f) => f.status === 'Unpaid' || Number(f.dueAmount || 0) > 0);
+    }
+
+    if (feeSearch.trim()) {
+      const q = feeSearch.toLowerCase();
+      base = base.filter((f) =>
+        `${f.tenantName} ${f.month} ${f.status}`.toLowerCase().includes(q)
+      );
+    }
+
+    return base;
+  }, [selectedTenantFeeRecords, currentFees, selectedFeeTenant, showUnpaidOnly, feeSearch]);
+
+  const displayedComplaints = useMemo(() => {
+    let list = currentComplaints;
+
+    if (complaintSearch.trim()) {
+      const q = complaintSearch.toLowerCase();
+      list = list.filter((c) =>
+        `${c.tenantName} ${c.roomNo} ${c.type} ${c.status} ${c.text}`
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+
+    return list;
+  }, [currentComplaints, complaintSearch]);
 
   const monthlyCollectedSummary = useMemo(() => {
-    const monthTotals = {};
+    const monthTotals: Record<string, number> = {};
 
     currentFees.forEach((fee) => {
-      if (fee.status === 'Paid') {
-        const amount = Number(fee.amount || 0);
-        monthTotals[fee.month] = (monthTotals[fee.month] || 0) + amount;
+      const paid = Number(fee.paidAmount || fee.amount || 0);
+      if (paid > 0) {
+        monthTotals[fee.month] = (monthTotals[fee.month] || 0) + paid;
       }
     });
 
@@ -293,9 +362,56 @@ export default function App() {
     year: 'numeric',
   });
 
-  const currentMonthCollected =
-    monthlyCollectedSummary.find((item) => item.month === currentMonthLabel)
-      ?.total || 0;
+  const currentMonthRecords = useMemo(
+    () => currentFees.filter((fee) => fee.month === currentMonthLabel),
+    [currentFees, currentMonthLabel]
+  );
+
+  const currentMonthExpectedFee = useMemo(
+    () =>
+      currentMonthRecords.reduce(
+        (sum, item) => sum + Number(item.amount || 0),
+        0
+      ),
+    [currentMonthRecords]
+  );
+
+  const currentMonthCollected = useMemo(
+    () =>
+      currentMonthRecords.reduce(
+        (sum, item) => sum + Number(item.paidAmount || 0),
+        0
+      ),
+    [currentMonthRecords]
+  );
+
+  const currentMonthPending = useMemo(
+    () =>
+      currentMonthRecords.reduce(
+        (sum, item) => sum + Number(item.dueAmount || 0),
+        0
+      ),
+    [currentMonthRecords]
+  );
+
+  const totalSecurityDepositCollected = useMemo(
+    () =>
+      currentTenants.reduce(
+        (sum, item) => sum + Number(item.securityDeposit || 0),
+        0
+      ),
+    [currentTenants]
+  );
+
+  const activeComplaints = useMemo(
+    () => currentComplaints.filter((c) => c.status !== 'Resolved').length,
+    [currentComplaints]
+  );
+
+  const resolvedComplaints = useMemo(
+    () => currentComplaints.filter((c) => c.status === 'Resolved').length,
+    [currentComplaints]
+  );
 
   const stats = useMemo(() => {
     const totalRooms = currentRooms.length;
@@ -308,12 +424,6 @@ export default function App() {
       0
     );
     const vacantBeds = totalBeds - occupiedBeds;
-    const pendingFees = currentFees.filter(
-      (item) => item.status === 'Unpaid'
-    ).length;
-    const pendingComplaints = currentComplaints.filter(
-      (item) => item.status === 'Pending'
-    ).length;
 
     return {
       totalRooms,
@@ -321,17 +431,44 @@ export default function App() {
       occupiedBeds,
       vacantBeds,
       totalTenants: currentTenants.length,
-      pendingFees,
-      pendingComplaints,
     };
-  }, [currentRooms, currentTenants, currentFees, currentComplaints]);
+  }, [currentRooms, currentTenants]);
+
+  const recentFees = useMemo(
+    () => [...currentFees].slice(0, 5),
+    [currentFees]
+  );
+
+  const recentComplaints = useMemo(
+    () => [...currentComplaints].slice(0, 5),
+    [currentComplaints]
+  );
+
+  const recentActivities = useMemo(() => {
+    const items = [
+      ...currentTenants.map((t) => ({
+        text: `Tenant added: ${t.name}`,
+        createdAt: t.createdAt || 0,
+      })),
+      ...currentFees.map((f) => ({
+        text: `Fee record: ${f.tenantName} - ${f.month}`,
+        createdAt: f.createdAt || 0,
+      })),
+      ...currentComplaints.map((c) => ({
+        text: `Complaint: ${c.tenantName} - ${c.type}`,
+        createdAt: c.createdAt || 0,
+      })),
+    ];
+
+    return items.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
+  }, [currentTenants, currentFees, currentComplaints]);
 
   const handleLogin = async () => {
     try {
       setOwnerError('');
       await signInWithEmailAndPassword(auth, email, password);
       setPassword('');
-    } catch (e) {
+    } catch {
       alert('Wrong email or password');
     }
   };
@@ -348,20 +485,49 @@ export default function App() {
       return;
     }
 
+    const duplicateRoom = currentRooms.some(
+      (room) => String(room.roomNo).trim() === String(roomForm.roomNo).trim()
+    );
+
+    if (duplicateRoom) {
+      alert('Room number already exists');
+      return;
+    }
+
     await addDoc(collection(db, 'rooms'), {
       hostel: selectedHostel,
       roomNo: roomForm.roomNo.trim(),
+      block: roomForm.block.trim(),
+      roomType: roomForm.roomType.trim(),
       totalBeds: Number(roomForm.totalBeds),
       occupiedBeds: Number(roomForm.occupiedBeds || 0),
+      availableBeds:
+        Number(roomForm.totalBeds || 0) - Number(roomForm.occupiedBeds || 0),
+      monthlyRentDefault: roomForm.monthlyRentDefault,
+      status: roomForm.status,
       createdAt: Date.now(),
     });
 
-    setRoomForm({ roomNo: '', totalBeds: '', occupiedBeds: '' });
+    setRoomForm({
+      roomNo: '',
+      block: '',
+      roomType: '',
+      totalBeds: '',
+      occupiedBeds: '',
+      monthlyRentDefault: '',
+      status: 'Active',
+    });
+    alert('Room added successfully');
   };
 
   const addTenant = async () => {
     if (!tenantForm.name || !tenantForm.roomNo || !tenantForm.bedNo) {
       alert('Fill tenant name, room number and bed number');
+      return;
+    }
+
+    if (tenantForm.phone && String(tenantForm.phone).replace(/\D/g, '').length < 10) {
+      alert('Enter valid phone number');
       return;
     }
 
@@ -404,26 +570,41 @@ export default function App() {
       name: tenantForm.name.trim(),
       phone: tenantForm.phone,
       parentPhone: tenantForm.parentPhone,
+      idNumber: tenantForm.idNumber,
+      joiningDate: tenantForm.joiningDate,
       roomNo: tenantForm.roomNo.trim(),
       bedNo: tenantForm.bedNo.trim(),
       monthlyFee: tenantForm.monthlyFee,
       securityDeposit: tenantForm.securityDeposit,
+      advancePaid: tenantForm.advancePaid,
+      address: tenantForm.address,
+      notes: tenantForm.notes,
+      status: tenantForm.status,
       createdAt: Date.now(),
     });
 
     await updateDoc(doc(db, 'rooms', roomMatch.id), {
       occupiedBeds: effectiveOccupied + 1,
+      availableBeds: Math.max(0, totalBeds - (effectiveOccupied + 1)),
     });
 
     setTenantForm({
       name: '',
       phone: '',
       parentPhone: '',
+      idNumber: '',
+      joiningDate: '',
       roomNo: selectedRoom || '',
       bedNo: '',
       monthlyFee: '',
       securityDeposit: '',
+      advancePaid: '',
+      address: '',
+      notes: '',
+      status: 'Active',
     });
+
+    alert('Tenant added successfully');
   };
 
   const addFee = async () => {
@@ -432,14 +613,34 @@ export default function App() {
       return;
     }
 
+    const amount = Number(feeForm.amount || 0);
+    const paidAmount =
+      feeForm.status === 'Paid'
+        ? amount
+        : feeForm.status === 'Partial'
+        ? Number(feeForm.paidAmount || 0)
+        : 0;
+
+    const dueAmount = Math.max(0, amount - paidAmount);
+
+    const finalStatus =
+      dueAmount === 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Unpaid';
+
     await addDoc(collection(db, 'fees'), {
       hostel: selectedHostel,
       tenantName: feeForm.tenantName,
       month: feeForm.month,
-      amount: feeForm.amount,
-      status: feeForm.status,
-      paidDate:
-        feeForm.status === 'Paid' ? new Date().toLocaleDateString() : '',
+      amount,
+      paidAmount,
+      dueAmount,
+      dueDate: feeForm.dueDate,
+      paymentDate:
+        finalStatus === 'Paid' || finalStatus === 'Partial'
+          ? feeForm.paymentDate || new Date().toLocaleDateString()
+          : '',
+      paymentMethod: feeForm.paymentMethod,
+      remarks: feeForm.remarks,
+      status: finalStatus,
       createdAt: Date.now(),
     });
 
@@ -450,8 +651,16 @@ export default function App() {
       month: '',
       monthDate: '',
       amount: '',
+      paidAmount: '',
+      dueAmount: '',
+      dueDate: '',
+      paymentDate: '',
+      paymentMethod: 'Cash',
+      remarks: '',
       status: 'Unpaid',
     });
+
+    alert('Fee record added successfully');
   };
 
   const addComplaint = async () => {
@@ -463,40 +672,69 @@ export default function App() {
     await addDoc(collection(db, 'complaints'), {
       hostel: selectedHostel,
       tenantName: complaintForm.tenantName,
+      roomNo: complaintForm.roomNo,
       type: complaintForm.type,
       text: complaintForm.text,
+      date: complaintForm.date || new Date().toLocaleDateString(),
+      priority: complaintForm.priority,
       status: complaintForm.status,
+      resolvedDate: complaintForm.resolvedDate,
       createdAt: Date.now(),
     });
 
     setComplaintForm({
       tenantName: '',
+      roomNo: '',
       type: 'Water',
       text: '',
+      date: '',
+      priority: 'Medium',
       status: 'Pending',
+      resolvedDate: '',
     });
+
+    alert('Complaint added successfully');
   };
 
-  const toggleFeeStatus = async (id, currentStatus) => {
-    const newStatus = currentStatus === 'Paid' ? 'Unpaid' : 'Paid';
+  const toggleFeeStatus = async (id: string, currentStatus: string, currentAmount?: any) => {
+    let newStatus = 'Paid';
+    let paidAmount = Number(currentAmount || 0);
+    let dueAmount = 0;
+    let paymentDate = new Date().toLocaleDateString();
+
+    if (currentStatus === 'Paid') {
+      newStatus = 'Unpaid';
+      paidAmount = 0;
+      dueAmount = Number(currentAmount || 0);
+      paymentDate = '';
+    }
 
     await updateDoc(doc(db, 'fees', id), {
       status: newStatus,
-      paidDate: newStatus === 'Paid' ? new Date().toLocaleDateString() : '',
+      paidAmount,
+      dueAmount,
+      paymentDate,
     });
   };
 
-  const toggleComplaintStatus = async (id, currentStatus) => {
+  const toggleComplaintStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'Resolved' ? 'Pending' : 'Resolved';
+
     await updateDoc(doc(db, 'complaints', id), {
-      status: currentStatus === 'Pending' ? 'Solved' : 'Pending',
+      status: newStatus,
+      resolvedDate:
+        newStatus === 'Resolved' ? new Date().toLocaleDateString() : '',
     });
   };
 
-  const deleteItem = async (collectionName, id) => {
+  const deleteItem = async (collectionName: string, id: string) => {
+    const ok = window.confirm('Are you sure you want to delete this record?');
+    if (!ok) return;
     await deleteDoc(doc(db, collectionName, id));
+    alert('Deleted successfully');
   };
 
-  const deleteTenantWithRelatedData = async (tenant) => {
+  const deleteTenantWithRelatedData = async (tenant: any) => {
     const confirmDelete = window.confirm(
       `Delete ${tenant.name} and all related fee/complaint data?`
     );
@@ -513,8 +751,12 @@ export default function App() {
           Number(roomMatch.occupiedBeds || 0),
           tenantsInRoom.length
         );
+        const newOccupied = Math.max(0, currentOccupied - 1);
+        const totalBeds = Number(roomMatch.totalBeds || 0);
+
         await updateDoc(doc(db, 'rooms', roomMatch.id), {
-          occupiedBeds: Math.max(0, currentOccupied - 1),
+          occupiedBeds: newOccupied,
+          availableBeds: Math.max(0, totalBeds - newOccupied),
         });
       }
 
@@ -545,19 +787,19 @@ export default function App() {
       }
 
       alert('Tenant and related records deleted successfully');
-    } catch (e) {
+    } catch {
       alert('Failed to delete tenant data');
     }
   };
 
-  const openRoomTenants = (roomNo) => {
+  const openRoomTenants = (roomNo: string) => {
     setSelectedRoom(roomNo);
     setTenantForm((prev) => ({ ...prev, roomNo }));
     setShowVacantOnly(false);
     setActiveTab('tenants');
   };
 
-  const openTenantFees = (tenantName) => {
+  const openTenantFees = (tenantName: string) => {
     setSelectedFeeTenant(tenantName);
     setFeeForm((prev) => ({ ...prev, tenantName }));
     setShowUnpaidOnly(false);
@@ -637,53 +879,80 @@ export default function App() {
         </div>
 
         <div style={styles.statsGrid}>
-          <StatCard
-            title="Rooms"
-            value={stats.totalRooms}
-            sub={`Beds: ${stats.totalBeds}`}
-          />
-          <StatCard
-            title="Tenants"
-            value={stats.totalTenants}
-            sub="Saved online"
-          />
-          <StatCard
-            title="Vacant Beds"
-            value={stats.vacantBeds}
-            sub={`Occupied: ${stats.occupiedBeds}`}
-            onClick={() => {
-              setActiveTab('rooms');
-              setShowVacantOnly(true);
-              setShowUnpaidOnly(false);
-            }}
-          />
-          <StatCard
-            title="Pending Fees"
-            value={stats.pendingFees}
-            sub={`Complaints: ${stats.pendingComplaints}`}
-            onClick={() => {
-              setActiveTab('fees');
-              setShowUnpaidOnly(true);
-              setShowVacantOnly(false);
-            }}
-          />
+          <StatCard title="Total Rooms" value={stats.totalRooms} sub={`Beds: ${stats.totalBeds}`} onClick={() => setActiveTab('rooms')} />
+          <StatCard title="Occupied Beds" value={stats.occupiedBeds} sub={`Vacant: ${stats.vacantBeds}`} />
+          <StatCard title="Vacant Beds" value={stats.vacantBeds} sub={`Occupied: ${stats.occupiedBeds}`} onClick={() => {
+            setActiveTab('rooms');
+            setShowVacantOnly(true);
+            setShowUnpaidOnly(false);
+          }} />
+          <StatCard title="Total Tenants" value={stats.totalTenants} sub="Saved online" onClick={() => setActiveTab('tenants')} />
+          <StatCard title="Expected Fee" value={formatCurrency(currentMonthExpectedFee)} sub={currentMonthLabel} />
+          <StatCard title="Collected Fee" value={formatCurrency(currentMonthCollected)} sub={currentMonthLabel} />
+          <StatCard title="Pending Fee" value={formatCurrency(currentMonthPending)} sub={currentMonthLabel} onClick={() => {
+            setActiveTab('fees');
+            setShowUnpaidOnly(true);
+            setShowVacantOnly(false);
+          }} />
+          <StatCard title="Security Deposit" value={formatCurrency(totalSecurityDepositCollected)} sub="Collected" />
+          <StatCard title="Active Complaints" value={activeComplaints} sub="Open" onClick={() => setActiveTab('complaints')} />
+          <StatCard title="Resolved Complaints" value={resolvedComplaints} sub="Closed" onClick={() => setActiveTab('complaints')} />
         </div>
 
         <div style={styles.collectionBanner}>
           <div style={styles.collectionCard}>
-            <p style={styles.collectionTitle}>Total Collected</p>
-            <h3 style={styles.collectionValue}>₹{currentMonthCollected}</h3>
+            <p style={styles.collectionTitle}>Current Month Collected</p>
+            <h3 style={styles.collectionValue}>{formatCurrency(currentMonthCollected)}</h3>
             <span style={styles.collectionSub}>{currentMonthLabel}</span>
           </div>
 
           <div style={styles.collectionCard}>
-            <p style={styles.collectionTitle}>Collection Summary</p>
+            <p style={styles.collectionTitle}>Monthly Collection Summary</p>
             {monthlyCollectedSummary.length === 0 ? (
               <span style={styles.collectionSub}>No paid data yet</span>
             ) : (
               monthlyCollectedSummary.slice(0, 6).map((item) => (
                 <p key={item.month} style={styles.summaryRow}>
-                  {item.month}: ₹{item.total}
+                  {item.month}: {formatCurrency(item.total)}
+                </p>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div style={styles.grid3}>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Recent Activity</h2>
+            {recentActivities.length === 0 ? (
+              <p style={styles.empty}>No recent activity</p>
+            ) : (
+              recentActivities.map((item, idx) => (
+                <p key={idx} style={styles.rowSub}>{item.text}</p>
+              ))
+            )}
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Recent Complaints</h2>
+            {recentComplaints.length === 0 ? (
+              <p style={styles.empty}>No recent complaints</p>
+            ) : (
+              recentComplaints.map((item) => (
+                <p key={item.id} style={styles.rowSub}>
+                  {item.tenantName} - {item.type} - {item.status}
+                </p>
+              ))
+            )}
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Recent Payments</h2>
+            {recentFees.length === 0 ? (
+              <p style={styles.empty}>No recent payments</p>
+            ) : (
+              recentFees.map((item) => (
+                <p key={item.id} style={styles.rowSub}>
+                  {item.tenantName} - {item.month} - {formatCurrency(item.paidAmount || 0)}
                 </p>
               ))
             )}
@@ -718,69 +987,56 @@ export default function App() {
           <div style={styles.grid2}>
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Add Room - {selectedHostel}</h2>
-              <input
-                style={styles.input}
-                placeholder="Room Number"
-                value={roomForm.roomNo}
-                onChange={(e) =>
-                  setRoomForm({ ...roomForm, roomNo: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                type="number"
-                placeholder="Total Beds"
-                value={roomForm.totalBeds}
-                onChange={(e) =>
-                  setRoomForm({ ...roomForm, totalBeds: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                type="number"
-                placeholder="Occupied Beds"
-                value={roomForm.occupiedBeds}
-                onChange={(e) =>
-                  setRoomForm({ ...roomForm, occupiedBeds: e.target.value })
-                }
-              />
-              <button style={styles.primaryBtn} onClick={addRoom}>
-                Add Room
-              </button>
+              <input style={styles.input} placeholder="Room Number" value={roomForm.roomNo} onChange={(e) => setRoomForm({ ...roomForm, roomNo: e.target.value })} />
+              <input style={styles.input} placeholder="Block / Floor" value={roomForm.block} onChange={(e) => setRoomForm({ ...roomForm, block: e.target.value })} />
+              <input style={styles.input} placeholder="Room Type" value={roomForm.roomType} onChange={(e) => setRoomForm({ ...roomForm, roomType: e.target.value })} />
+              <input style={styles.input} type="number" placeholder="Capacity / Total Beds" value={roomForm.totalBeds} onChange={(e) => setRoomForm({ ...roomForm, totalBeds: e.target.value })} />
+              <input style={styles.input} type="number" placeholder="Occupied Beds" value={roomForm.occupiedBeds} onChange={(e) => setRoomForm({ ...roomForm, occupiedBeds: e.target.value })} />
+              <input style={styles.input} placeholder="Default Monthly Rent" value={roomForm.monthlyRentDefault} onChange={(e) => setRoomForm({ ...roomForm, monthlyRentDefault: e.target.value })} />
+              <select style={styles.select} value={roomForm.status} onChange={(e) => setRoomForm({ ...roomForm, status: e.target.value })}>
+                <option value="Active">Active</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+              <button style={styles.primaryBtn} onClick={addRoom}>Add Room</button>
             </div>
 
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Room Availability</h2>
+              <input
+                style={styles.input}
+                placeholder="Search room / block / type"
+                value={roomSearch}
+                onChange={(e) => setRoomSearch(e.target.value)}
+              />
               {showVacantOnly ? (
                 <p style={styles.filterNote}>Showing only rooms with vacant beds</p>
               ) : null}
 
-              {displayedRooms.length === 0 ? (
+              {searchedRooms.length === 0 ? (
                 <p style={styles.empty}>
                   {showVacantOnly ? 'No rooms with vacancy' : 'No rooms yet'}
                 </p>
               ) : (
-                displayedRooms.map((room) => (
+                searchedRooms.map((room) => (
                   <div key={room.id} style={styles.row}>
                     <div>
-                      <button
-                        style={styles.linkBtn}
-                        onClick={() => openRoomTenants(room.roomNo)}
-                      >
+                      <button style={styles.linkBtn} onClick={() => openRoomTenants(room.roomNo)}>
                         Room {room.roomNo}
                       </button>
                       <p style={styles.rowSub}>
-                        Beds: {room.totalBeds} | Occupied: {room.occupiedBeds}
+                        Block: {room.block || '-'} | Type: {room.roomType || '-'}
+                      </p>
+                      <p style={styles.rowSub}>
+                        Beds: {room.totalBeds} | Occupied: {room.occupiedBeds} | Available:{' '}
+                        {Math.max(0, Number(room.totalBeds) - Number(room.occupiedBeds))}
                       </p>
                     </div>
                     <div style={styles.rowActions}>
                       <span style={styles.badge}>
-                        {Number(room.totalBeds) - Number(room.occupiedBeds)} Vacant
+                        {Math.max(0, Number(room.totalBeds) - Number(room.occupiedBeds))} Vacant
                       </span>
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() => deleteItem('rooms', room.id)}
-                      >
+                      <button style={styles.smallBtn} onClick={() => deleteItem('rooms', room.id)}>
                         Delete
                       </button>
                     </div>
@@ -795,78 +1051,37 @@ export default function App() {
           <div style={styles.grid2}>
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>
-                {selectedRoom
-                  ? `Add Tenant for Room ${selectedRoom}`
-                  : 'Add Tenant'}
+                {selectedRoom ? `Add Tenant for Room ${selectedRoom}` : 'Add Tenant'}
               </h2>
-              <input
-                style={styles.input}
-                placeholder="Tenant Name"
-                value={tenantForm.name}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, name: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                placeholder="Phone Number"
-                value={tenantForm.phone}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, phone: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                placeholder="Parent Phone"
-                value={tenantForm.parentPhone}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, parentPhone: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                placeholder="Room Number"
-                value={tenantForm.roomNo}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, roomNo: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                placeholder="Bed Number"
-                value={tenantForm.bedNo}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, bedNo: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                placeholder="Monthly Fee"
-                value={tenantForm.monthlyFee}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, monthlyFee: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                placeholder="Security Deposit"
-                value={tenantForm.securityDeposit}
-                onChange={(e) =>
-                  setTenantForm({ ...tenantForm, securityDeposit: e.target.value })
-                }
-              />
-              <button style={styles.primaryBtn} onClick={addTenant}>
-                Save Tenant
-              </button>
+              <input style={styles.input} placeholder="Full Name" value={tenantForm.name} onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })} />
+              <input style={styles.input} placeholder="Phone Number" value={tenantForm.phone} onChange={(e) => setTenantForm({ ...tenantForm, phone: e.target.value })} />
+              <input style={styles.input} placeholder="Parent / Emergency Contact" value={tenantForm.parentPhone} onChange={(e) => setTenantForm({ ...tenantForm, parentPhone: e.target.value })} />
+              <input style={styles.input} placeholder="Aadhaar / ID Number" value={tenantForm.idNumber} onChange={(e) => setTenantForm({ ...tenantForm, idNumber: e.target.value })} />
+              <input style={styles.input} type="date" value={tenantForm.joiningDate} onChange={(e) => setTenantForm({ ...tenantForm, joiningDate: e.target.value })} />
+              <input style={styles.input} placeholder="Room Number" value={tenantForm.roomNo} onChange={(e) => setTenantForm({ ...tenantForm, roomNo: e.target.value })} />
+              <input style={styles.input} placeholder="Bed Number" value={tenantForm.bedNo} onChange={(e) => setTenantForm({ ...tenantForm, bedNo: e.target.value })} />
+              <input style={styles.input} placeholder="Monthly Fee" value={tenantForm.monthlyFee} onChange={(e) => setTenantForm({ ...tenantForm, monthlyFee: e.target.value })} />
+              <input style={styles.input} placeholder="Security Deposit" value={tenantForm.securityDeposit} onChange={(e) => setTenantForm({ ...tenantForm, securityDeposit: e.target.value })} />
+              <input style={styles.input} placeholder="Advance Paid" value={tenantForm.advancePaid} onChange={(e) => setTenantForm({ ...tenantForm, advancePaid: e.target.value })} />
+              <input style={styles.input} placeholder="Address" value={tenantForm.address} onChange={(e) => setTenantForm({ ...tenantForm, address: e.target.value })} />
+              <textarea style={styles.textarea} placeholder="Notes" value={tenantForm.notes} onChange={(e) => setTenantForm({ ...tenantForm, notes: e.target.value })} />
+              <select style={styles.select} value={tenantForm.status} onChange={(e) => setTenantForm({ ...tenantForm, status: e.target.value })}>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+              <button style={styles.primaryBtn} onClick={addTenant}>Save Tenant</button>
             </div>
 
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Tenant List</h2>
+              <input
+                style={styles.input}
+                placeholder="Search name / room / phone"
+                value={tenantSearch}
+                onChange={(e) => setTenantSearch(e.target.value)}
+              />
               {selectedRoom ? (
-                <button
-                  style={styles.smallBtn}
-                  onClick={() => setSelectedRoom('')}
-                >
+                <button style={styles.smallBtn} onClick={() => setSelectedRoom('')}>
                   Show All Tenants
                 </button>
               ) : null}
@@ -877,25 +1092,22 @@ export default function App() {
                 filteredTenants.map((tenant) => (
                   <div key={tenant.id} style={styles.row}>
                     <div>
-                      <button
-                        style={styles.linkBtn}
-                        onClick={() => openTenantFees(tenant.name)}
-                      >
+                      <button style={styles.linkBtn} onClick={() => openTenantFees(tenant.name)}>
                         {tenant.name}
                       </button>
                       <p style={styles.rowSub}>
                         {tenant.phone || 'No phone'} | Room {tenant.roomNo} | Bed {tenant.bedNo}
                       </p>
                       <p style={styles.rowSub}>
-                        Monthly Fee: ₹{tenant.monthlyFee || 0} | Security Deposit: ₹
-                        {tenant.securityDeposit || 0}
+                        Joining: {tenant.joiningDate || '-'} | Status: {tenant.status || 'Active'}
+                      </p>
+                      <p style={styles.rowSub}>
+                        Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)} | Security Deposit:{' '}
+                        {formatCurrency(tenant.securityDeposit || 0)}
                       </p>
                     </div>
 
-                    <button
-                      style={styles.smallBtn}
-                      onClick={() => deleteTenantWithRelatedData(tenant)}
-                    >
+                    <button style={styles.smallBtn} onClick={() => deleteTenantWithRelatedData(tenant)}>
                       Delete
                     </button>
                   </div>
@@ -947,15 +1159,16 @@ export default function App() {
                 }}
               />
 
-              <input
-                style={styles.input}
-                placeholder="Amount"
-                value={feeForm.amount}
-                onChange={(e) =>
-                  setFeeForm({ ...feeForm, amount: e.target.value })
-                }
-              />
-
+              <input style={styles.input} placeholder="Total Amount" value={feeForm.amount} onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })} />
+              <input style={styles.input} placeholder="Paid Amount (for partial/paid)" value={feeForm.paidAmount} onChange={(e) => setFeeForm({ ...feeForm, paidAmount: e.target.value })} />
+              <input style={styles.input} type="date" value={feeForm.dueDate} onChange={(e) => setFeeForm({ ...feeForm, dueDate: e.target.value })} />
+              <input style={styles.input} type="date" value={feeForm.paymentDate} onChange={(e) => setFeeForm({ ...feeForm, paymentDate: e.target.value })} />
+              <select style={styles.select} value={feeForm.paymentMethod} onChange={(e) => setFeeForm({ ...feeForm, paymentMethod: e.target.value })}>
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+              <textarea style={styles.textarea} placeholder="Remarks" value={feeForm.remarks} onChange={(e) => setFeeForm({ ...feeForm, remarks: e.target.value })} />
               <select
                 style={styles.select}
                 value={feeForm.status}
@@ -968,6 +1181,7 @@ export default function App() {
               >
                 <option value="Paid">Paid</option>
                 <option value="Unpaid">Unpaid</option>
+                <option value="Partial">Partial</option>
               </select>
 
               <button style={styles.primaryBtn} onClick={addFee}>
@@ -977,15 +1191,19 @@ export default function App() {
 
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Fee Records</h2>
+              <input
+                style={styles.input}
+                placeholder="Search tenant / month / status"
+                value={feeSearch}
+                onChange={(e) => setFeeSearch(e.target.value)}
+              />
 
               {showUnpaidOnly ? (
                 <p style={styles.filterNote}>Showing only unpaid fee records</p>
               ) : null}
 
               {!selectedFeeTenant && !showUnpaidOnly ? (
-                <p style={styles.empty}>
-                  Select a tenant to see monthly fee history
-                </p>
+                <p style={styles.empty}>Select a tenant to see monthly fee history</p>
               ) : displayedFeeRecords.length === 0 ? (
                 <p style={styles.empty}>
                   {showUnpaidOnly
@@ -998,8 +1216,13 @@ export default function App() {
                     <div>
                       <strong>{fee.tenantName}</strong>
                       <p style={styles.rowSub}>
-                        Month: {fee.month} | ₹{fee.amount} | Paid Date:{' '}
-                        {fee.paidDate || 'Not paid yet'}
+                        Month: {fee.month} | Total: {formatCurrency(fee.amount)} | Paid:{' '}
+                        {formatCurrency(fee.paidAmount || 0)} | Pending:{' '}
+                        {formatCurrency(fee.dueAmount || 0)}
+                      </p>
+                      <p style={styles.rowSub}>
+                        Due Date: {fee.dueDate || '-'} | Payment Date: {fee.paymentDate || '-'} | Method:{' '}
+                        {fee.paymentMethod || '-'}
                       </p>
                     </div>
 
@@ -1009,6 +1232,8 @@ export default function App() {
                           ...styles.badge,
                           ...(fee.status === 'Paid'
                             ? styles.greenBadge
+                            : fee.status === 'Partial'
+                            ? styles.orangeBadge
                             : styles.redBadge),
                         }}
                       >
@@ -1017,7 +1242,7 @@ export default function App() {
 
                       <button
                         style={styles.smallBtn}
-                        onClick={() => toggleFeeStatus(fee.id, fee.status)}
+                        onClick={() => toggleFeeStatus(fee.id, fee.status, fee.amount)}
                       >
                         Toggle
                       </button>
@@ -1043,12 +1268,15 @@ export default function App() {
               <select
                 style={styles.select}
                 value={complaintForm.tenantName}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const tenantName = e.target.value;
+                  const foundTenant = currentTenants.find((t) => t.name === tenantName);
                   setComplaintForm({
                     ...complaintForm,
-                    tenantName: e.target.value,
-                  })
-                }
+                    tenantName,
+                    roomNo: foundTenant?.roomNo || '',
+                  });
+                }}
               >
                 <option value="">Select Tenant</option>
                 {tenantNames.map((name) => (
@@ -1057,18 +1285,20 @@ export default function App() {
                   </option>
                 ))}
               </select>
-              <select
-                style={styles.select}
-                value={complaintForm.type}
-                onChange={(e) =>
-                  setComplaintForm({ ...complaintForm, type: e.target.value })
-                }
-              >
+              <input style={styles.input} placeholder="Room Number" value={complaintForm.roomNo} onChange={(e) => setComplaintForm({ ...complaintForm, roomNo: e.target.value })} />
+              <select style={styles.select} value={complaintForm.type} onChange={(e) => setComplaintForm({ ...complaintForm, type: e.target.value })}>
                 <option value="Water">Water</option>
                 <option value="Fan">Fan</option>
                 <option value="WiFi">WiFi</option>
                 <option value="Cleaning">Cleaning</option>
                 <option value="Food">Food</option>
+                <option value="Electricity">Electricity</option>
+              </select>
+              <input style={styles.input} type="date" value={complaintForm.date} onChange={(e) => setComplaintForm({ ...complaintForm, date: e.target.value })} />
+              <select style={styles.select} value={complaintForm.priority} onChange={(e) => setComplaintForm({ ...complaintForm, priority: e.target.value })}>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
               </select>
               <textarea
                 style={styles.textarea}
@@ -1085,22 +1315,31 @@ export default function App() {
 
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Complaint Tracker</h2>
-              {currentComplaints.length === 0 ? (
+              <input
+                style={styles.input}
+                placeholder="Search tenant / room / type / status"
+                value={complaintSearch}
+                onChange={(e) => setComplaintSearch(e.target.value)}
+              />
+              {displayedComplaints.length === 0 ? (
                 <p style={styles.empty}>No complaints yet</p>
               ) : (
-                currentComplaints.map((item) => (
+                displayedComplaints.map((item) => (
                   <div key={item.id} style={styles.row}>
                     <div>
                       <strong>{item.tenantName}</strong>
                       <p style={styles.rowSub}>
-                        {item.type} | {item.text}
+                        Room {item.roomNo || '-'} | {item.type} | {item.priority}
+                      </p>
+                      <p style={styles.rowSub}>
+                        {item.text}
                       </p>
                     </div>
                     <div style={styles.rowActions}>
                       <span
                         style={{
                           ...styles.badge,
-                          ...(item.status === 'Solved'
+                          ...(item.status === 'Resolved'
                             ? styles.greenBadge
                             : styles.redBadge),
                         }}
@@ -1133,7 +1372,7 @@ export default function App() {
   );
 }
 
-function StatCard({ title, value, sub, onClick }) {
+function StatCard({ title, value, sub, onClick }: any) {
   return (
     <div
       style={{
@@ -1149,7 +1388,7 @@ function StatCard({ title, value, sub, onClick }) {
   );
 }
 
-const styles = {
+const styles: Record<string, any> = {
   page: {
     minHeight: '100vh',
     background: '#f8fafc',
@@ -1157,7 +1396,7 @@ const styles = {
     fontFamily: 'Arial, sans-serif',
     color: '#0f172a',
   },
-  container: { maxWidth: 1200, margin: '0 auto' },
+  container: { maxWidth: 1400, margin: '0 auto' },
   hero: {
     background: 'linear-gradient(135deg,#0f172a,#334155)',
     borderRadius: 24,
@@ -1193,6 +1432,7 @@ const styles = {
     border: '1px solid #cbd5e1',
     fontSize: 14,
     marginBottom: 12,
+    boxSizing: 'border-box',
   },
   readOnlyBox: {
     width: '100%',
@@ -1224,7 +1464,7 @@ const styles = {
   activeTab: { background: '#0f172a', color: 'white' },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))',
     gap: 16,
     marginBottom: 20,
   },
@@ -1235,7 +1475,7 @@ const styles = {
     boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
   },
   statTitle: { margin: 0, color: '#64748b' },
-  statValue: { margin: '10px 0 4px', fontSize: 30 },
+  statValue: { margin: '10px 0 4px', fontSize: 24 },
   statSub: { color: '#64748b', fontSize: 13 },
   collectionBanner: {
     display: 'grid',
@@ -1271,7 +1511,13 @@ const styles = {
   },
   grid2: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))',
+    gap: 16,
+    marginBottom: 20,
+  },
+  grid3: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))',
     gap: 16,
     marginBottom: 20,
   },
@@ -1325,7 +1571,7 @@ const styles = {
   row: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
     padding: '12px 0',
     borderBottom: '1px solid #e2e8f0',
@@ -1348,6 +1594,7 @@ const styles = {
   },
   greenBadge: { background: '#dcfce7', color: '#166534' },
   redBadge: { background: '#fee2e2', color: '#991b1b' },
+  orangeBadge: { background: '#ffedd5', color: '#9a3412' },
   smallBtn: {
     border: '1px solid #cbd5e1',
     background: 'white',
@@ -1363,6 +1610,7 @@ const styles = {
     fontWeight: 'bold',
     cursor: 'pointer',
     padding: 0,
+    textAlign: 'left',
   },
   empty: { color: '#64748b', margin: 0 },
   filterNote: {
