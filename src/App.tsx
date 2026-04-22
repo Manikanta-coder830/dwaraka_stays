@@ -34,12 +34,12 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-function monthToTimestamp(monthLabel: string) {
+function monthToTimestamp(monthLabel) {
   const d = new Date(`1 ${monthLabel}`);
   return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
-function formatCurrency(amount: number | string) {
+function formatCurrency(amount) {
   return `₹${Number(amount || 0)}`;
 }
 
@@ -48,18 +48,18 @@ export default function App() {
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [ownerLoading, setOwnerLoading] = useState(false);
-  const [ownerHostel, setOwnerHostel] = useState('');
+  const [ownerHostels, setOwnerHostels] = useState([]);
   const [ownerError, setOwnerError] = useState('');
 
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [tenants, setTenants] = useState<any[]>([]);
-  const [fees, setFees] = useState<any[]>([]);
-  const [complaints, setComplaints] = useState<any[]>([]);
+  const [rooms, setRooms] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [fees, setFees] = useState([]);
+  const [complaints, setComplaints] = useState([]);
 
   const [selectedFeeTenant, setSelectedFeeTenant] = useState('');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
@@ -126,7 +126,7 @@ export default function App() {
       setAuthLoading(false);
 
       if (!u?.email) {
-        setOwnerHostel('');
+        setOwnerHostels([]);
         setSelectedHostel('');
         setOwnerError('');
         return;
@@ -143,17 +143,30 @@ export default function App() {
         const snapshot = await getDocs(ownerQuery);
 
         if (snapshot.empty) {
-          setOwnerHostel('');
+          setOwnerHostels([]);
           setSelectedHostel('');
           setOwnerError('No hostel assigned for this login.');
           await signOut(auth);
         } else {
           const ownerData = snapshot.docs[0].data();
-          setOwnerHostel(ownerData.hostel);
-          setSelectedHostel(ownerData.hostel);
+          const hostelsList = Array.isArray(ownerData.hostels)
+            ? ownerData.hostels
+            : ownerData.hostel
+            ? [ownerData.hostel]
+            : [];
+
+          if (!hostelsList.length) {
+            setOwnerHostels([]);
+            setSelectedHostel('');
+            setOwnerError('No hostel assigned for this login.');
+            await signOut(auth);
+          } else {
+            setOwnerHostels(hostelsList);
+            setSelectedHostel(hostelsList[0]);
+          }
         }
       } catch {
-        setOwnerHostel('');
+        setOwnerHostels([]);
         setSelectedHostel('');
         setOwnerError('Failed to load owner hostel.');
       } finally {
@@ -246,23 +259,39 @@ export default function App() {
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
-    () => rooms.filter((item) => item.hostel === selectedHostel),
-    [rooms, selectedHostel]
+    () =>
+      rooms.filter(
+        (item) =>
+          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
+      ),
+    [rooms, selectedHostel, ownerHostels]
   );
 
   const currentTenants = useMemo(
-    () => tenants.filter((item) => item.hostel === selectedHostel),
-    [tenants, selectedHostel]
+    () =>
+      tenants.filter(
+        (item) =>
+          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
+      ),
+    [tenants, selectedHostel, ownerHostels]
   );
 
   const currentFees = useMemo(
-    () => fees.filter((item) => item.hostel === selectedHostel),
-    [fees, selectedHostel]
+    () =>
+      fees.filter(
+        (item) =>
+          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
+      ),
+    [fees, selectedHostel, ownerHostels]
   );
 
   const currentComplaints = useMemo(
-    () => complaints.filter((item) => item.hostel === selectedHostel),
-    [complaints, selectedHostel]
+    () =>
+      complaints.filter(
+        (item) =>
+          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
+      ),
+    [complaints, selectedHostel, ownerHostels]
   );
 
   const searchedRooms = useMemo(() => {
@@ -289,9 +318,7 @@ export default function App() {
     if (tenantSearch.trim()) {
       const q = tenantSearch.toLowerCase();
       list = list.filter((item) =>
-        `${item.name} ${item.roomNo} ${item.phone}`
-          .toLowerCase()
-          .includes(q)
+        `${item.name} ${item.roomNo} ${item.phone}`.toLowerCase().includes(q)
       );
     }
 
@@ -314,7 +341,9 @@ export default function App() {
     let base = selectedFeeTenant ? selectedTenantFeeRecords : currentFees;
 
     if (showUnpaidOnly) {
-      base = base.filter((f) => f.status === 'Unpaid' || Number(f.dueAmount || 0) > 0);
+      base = base.filter(
+        (f) => f.status === 'Unpaid' || Number(f.dueAmount || 0) > 0
+      );
     }
 
     if (feeSearch.trim()) {
@@ -325,7 +354,13 @@ export default function App() {
     }
 
     return base;
-  }, [selectedTenantFeeRecords, currentFees, selectedFeeTenant, showUnpaidOnly, feeSearch]);
+  }, [
+    selectedTenantFeeRecords,
+    currentFees,
+    selectedFeeTenant,
+    showUnpaidOnly,
+    feeSearch,
+  ]);
 
   const displayedComplaints = useMemo(() => {
     let list = currentComplaints;
@@ -343,10 +378,10 @@ export default function App() {
   }, [currentComplaints, complaintSearch]);
 
   const monthlyCollectedSummary = useMemo(() => {
-    const monthTotals: Record<string, number> = {};
+    const monthTotals = {};
 
     currentFees.forEach((fee) => {
-      const paid = Number(fee.paidAmount || fee.amount || 0);
+      const paid = Number(fee.paidAmount || 0);
       if (paid > 0) {
         monthTotals[fee.month] = (monthTotals[fee.month] || 0) + paid;
       }
@@ -434,11 +469,7 @@ export default function App() {
     };
   }, [currentRooms, currentTenants]);
 
-  const recentFees = useMemo(
-    () => [...currentFees].slice(0, 5),
-    [currentFees]
-  );
-
+  const recentFees = useMemo(() => [...currentFees].slice(0, 5), [currentFees]);
   const recentComplaints = useMemo(
     () => [...currentComplaints].slice(0, 5),
     [currentComplaints]
@@ -475,7 +506,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
-    setOwnerHostel('');
+    setOwnerHostels([]);
     setSelectedHostel('');
   };
 
@@ -526,7 +557,10 @@ export default function App() {
       return;
     }
 
-    if (tenantForm.phone && String(tenantForm.phone).replace(/\D/g, '').length < 10) {
+    if (
+      tenantForm.phone &&
+      String(tenantForm.phone).replace(/\D/g, '').length < 10
+    ) {
       alert('Enter valid phone number');
       return;
     }
@@ -696,7 +730,7 @@ export default function App() {
     alert('Complaint added successfully');
   };
 
-  const toggleFeeStatus = async (id: string, currentStatus: string, currentAmount?: any) => {
+  const toggleFeeStatus = async (id, currentStatus, currentAmount) => {
     let newStatus = 'Paid';
     let paidAmount = Number(currentAmount || 0);
     let dueAmount = 0;
@@ -717,7 +751,7 @@ export default function App() {
     });
   };
 
-  const toggleComplaintStatus = async (id: string, currentStatus: string) => {
+  const toggleComplaintStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'Resolved' ? 'Pending' : 'Resolved';
 
     await updateDoc(doc(db, 'complaints', id), {
@@ -727,14 +761,14 @@ export default function App() {
     });
   };
 
-  const deleteItem = async (collectionName: string, id: string) => {
+  const deleteItem = async (collectionName, id) => {
     const ok = window.confirm('Are you sure you want to delete this record?');
     if (!ok) return;
     await deleteDoc(doc(db, collectionName, id));
     alert('Deleted successfully');
   };
 
-  const deleteTenantWithRelatedData = async (tenant: any) => {
+  const deleteTenantWithRelatedData = async (tenant) => {
     const confirmDelete = window.confirm(
       `Delete ${tenant.name} and all related fee/complaint data?`
     );
@@ -792,14 +826,14 @@ export default function App() {
     }
   };
 
-  const openRoomTenants = (roomNo: string) => {
+  const openRoomTenants = (roomNo) => {
     setSelectedRoom(roomNo);
     setTenantForm((prev) => ({ ...prev, roomNo }));
     setShowVacantOnly(false);
     setActiveTab('tenants');
   };
 
-  const openTenantFees = (tenantName: string) => {
+  const openTenantFees = (tenantName) => {
     setSelectedFeeTenant(tenantName);
     setFeeForm((prev) => ({ ...prev, tenantName }));
     setShowUnpaidOnly(false);
@@ -858,18 +892,24 @@ export default function App() {
             <p style={styles.small}>DWARAKA STAYS</p>
             <h1 style={styles.title}>Firebase Hostel Management</h1>
             <p style={styles.subtitle}>
-              Logged in hostel: {ownerHostel || selectedHostel}
+              Accessible hostels: {ownerHostels.join(', ')}
             </p>
           </div>
 
           <div style={styles.heroRight}>
             <div style={styles.switchBox}>
-              <label style={styles.label}>Assigned Hostel</label>
-              <input
-                style={styles.readOnlyBox}
+              <label style={styles.label}>Select Hostel</label>
+              <select
+                style={styles.select}
                 value={selectedHostel}
-                readOnly
-              />
+                onChange={(e) => setSelectedHostel(e.target.value)}
+              >
+                {ownerHostels.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button style={styles.logoutBtn} onClick={handleLogout}>
@@ -1372,7 +1412,7 @@ export default function App() {
   );
 }
 
-function StatCard({ title, value, sub, onClick }: any) {
+function StatCard({ title, value, sub, onClick }) {
   return (
     <div
       style={{
@@ -1388,7 +1428,7 @@ function StatCard({ title, value, sub, onClick }: any) {
   );
 }
 
-const styles: Record<string, any> = {
+const styles = {
   page: {
     minHeight: '100vh',
     background: '#f8fafc',
