@@ -47,6 +47,7 @@ export default function App() {
   const [selectedHostel, setSelectedHostel] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
+  const [openTenantId, setOpenTenantId] = useState('');
 
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
@@ -232,6 +233,7 @@ export default function App() {
     setRoomSearch('');
     setFeeSearch('');
     setComplaintSearch('');
+    setOpenTenantId('');
 
     setTenantForm((prev) => ({ ...prev, roomNo: '' }));
     setFeeForm({
@@ -1122,7 +1124,7 @@ export default function App() {
               <h2 style={styles.cardTitle}>Tenant List</h2>
               <input
                 style={styles.input}
-                placeholder="Search name / room / phone / aadhaar"
+                placeholder="Search name / room / phone"
                 value={tenantSearch}
                 onChange={(e) => setTenantSearch(e.target.value)}
               />
@@ -1137,28 +1139,54 @@ export default function App() {
               ) : (
                 filteredTenants.map((tenant) => (
                   <div key={tenant.id} style={styles.row}>
-                    <div>
-                      <button style={styles.linkBtn} onClick={() => openTenantFees(tenant.name)}>
+                    <div style={{ flex: 1 }}>
+                      <button
+                        style={styles.linkBtn}
+                        onClick={() => openTenantFees(tenant.name)}
+                      >
                         {tenant.name}
                       </button>
+
                       <p style={styles.rowSub}>
-                        {tenant.phone || 'No phone'} | Room {tenant.roomNo} | Bed {tenant.bedNo}
+                        {tenant.phone || 'No phone'} | Room {tenant.roomNo}
                       </p>
-                      <p style={styles.rowSub}>
-                        Joining: {tenant.joiningDate || '-'} | Status: {tenant.status || 'Active'}
-                      </p>
-                      <p style={styles.rowSub}>
-                        Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)} | Security Deposit:{' '}
-                        {formatCurrency(tenant.securityDeposit || 0)}
-                      </p>
-                      <p style={styles.rowSub}>
-                        Aadhaar No: {tenant.aadhaarNo || '-'}
-                      </p>
+
+                      {openTenantId === tenant.id && (
+                        <div style={{ marginTop: 10 }}>
+                          <p style={styles.rowSub}>Bed No: {tenant.bedNo || '-'}</p>
+                          <p style={styles.rowSub}>Parent Phone: {tenant.parentPhone || '-'}</p>
+                          <p style={styles.rowSub}>Joining Date: {tenant.joiningDate || '-'}</p>
+                          <p style={styles.rowSub}>Status: {tenant.status || 'Active'}</p>
+                          <p style={styles.rowSub}>
+                            Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)}
+                          </p>
+                          <p style={styles.rowSub}>
+                            Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}
+                          </p>
+                          <p style={styles.rowSub}>Aadhaar No: {tenant.aadhaarNo || '-'}</p>
+                          <p style={styles.rowSub}>Address: {tenant.address || '-'}</p>
+                          <p style={styles.rowSub}>Notes: {tenant.notes || '-'}</p>
+                        </div>
+                      )}
                     </div>
 
-                    <button style={styles.smallBtn} onClick={() => deleteTenantWithRelatedData(tenant)}>
-                      Delete
-                    </button>
+                    <div style={styles.rowActions}>
+                      <button
+                        style={styles.smallBtn}
+                        onClick={() =>
+                          setOpenTenantId(openTenantId === tenant.id ? '' : tenant.id)
+                        }
+                      >
+                        {openTenantId === tenant.id ? 'Hide Details' : 'Details'}
+                      </button>
+
+                      <button
+                        style={styles.smallBtn}
+                        onClick={() => deleteTenantWithRelatedData(tenant)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
