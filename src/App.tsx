@@ -84,6 +84,7 @@ export default function App() {
     phone: '',
     parentPhone: '',
     idNumber: '',
+    aadhaarNo: '',
     joiningDate: '',
     roomNo: '',
     bedNo: '',
@@ -318,7 +319,9 @@ export default function App() {
     if (tenantSearch.trim()) {
       const q = tenantSearch.toLowerCase();
       list = list.filter((item) =>
-        `${item.name} ${item.roomNo} ${item.phone}`.toLowerCase().includes(q)
+        `${item.name} ${item.roomNo} ${item.phone} ${item.aadhaarNo || ''}`
+          .toLowerCase()
+          .includes(q)
       );
     }
 
@@ -605,6 +608,7 @@ export default function App() {
       phone: tenantForm.phone,
       parentPhone: tenantForm.parentPhone,
       idNumber: tenantForm.idNumber,
+      aadhaarNo: tenantForm.aadhaarNo,
       joiningDate: tenantForm.joiningDate,
       roomNo: tenantForm.roomNo.trim(),
       bedNo: tenantForm.bedNo.trim(),
@@ -627,6 +631,7 @@ export default function App() {
       phone: '',
       parentPhone: '',
       idNumber: '',
+      aadhaarNo: '',
       joiningDate: '',
       roomNo: selectedRoom || '',
       bedNo: '',
@@ -1097,6 +1102,7 @@ export default function App() {
               <input style={styles.input} placeholder="Phone Number" value={tenantForm.phone} onChange={(e) => setTenantForm({ ...tenantForm, phone: e.target.value })} />
               <input style={styles.input} placeholder="Parent / Emergency Contact" value={tenantForm.parentPhone} onChange={(e) => setTenantForm({ ...tenantForm, parentPhone: e.target.value })} />
               <input style={styles.input} placeholder="Aadhaar / ID Number" value={tenantForm.idNumber} onChange={(e) => setTenantForm({ ...tenantForm, idNumber: e.target.value })} />
+              <input style={styles.input} placeholder="Aadhaar Number" value={tenantForm.aadhaarNo} onChange={(e) => setTenantForm({ ...tenantForm, aadhaarNo: e.target.value })} />
               <input style={styles.input} type="date" value={tenantForm.joiningDate} onChange={(e) => setTenantForm({ ...tenantForm, joiningDate: e.target.value })} />
               <input style={styles.input} placeholder="Room Number" value={tenantForm.roomNo} onChange={(e) => setTenantForm({ ...tenantForm, roomNo: e.target.value })} />
               <input style={styles.input} placeholder="Bed Number" value={tenantForm.bedNo} onChange={(e) => setTenantForm({ ...tenantForm, bedNo: e.target.value })} />
@@ -1116,7 +1122,7 @@ export default function App() {
               <h2 style={styles.cardTitle}>Tenant List</h2>
               <input
                 style={styles.input}
-                placeholder="Search name / room / phone"
+                placeholder="Search name / room / phone / aadhaar"
                 value={tenantSearch}
                 onChange={(e) => setTenantSearch(e.target.value)}
               />
@@ -1144,6 +1150,9 @@ export default function App() {
                       <p style={styles.rowSub}>
                         Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)} | Security Deposit:{' '}
                         {formatCurrency(tenant.securityDeposit || 0)}
+                      </p>
+                      <p style={styles.rowSub}>
+                        Aadhaar No: {tenant.aadhaarNo || '-'}
                       </p>
                     </div>
 
@@ -1472,16 +1481,6 @@ const styles = {
     border: '1px solid #cbd5e1',
     fontSize: 14,
     marginBottom: 12,
-    boxSizing: 'border-box',
-  },
-  readOnlyBox: {
-    width: '100%',
-    padding: 12,
-    borderRadius: 12,
-    border: '1px solid #94a3b8',
-    background: '#e2e8f0',
-    fontSize: 14,
-    color: '#0f172a',
     boxSizing: 'border-box',
   },
   tabs: {
