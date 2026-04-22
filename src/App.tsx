@@ -34,13 +34,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-function monthToTimestamp(monthLabel) {
-  const d = new Date(`1 ${monthLabel}`);
-  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+function formatCurrency(amount: any) {
+  return `₹${Number(amount || 0)}`;
 }
 
-function formatCurrency(amount) {
-  return `₹${Number(amount || 0)}`;
+function monthToTimestamp(monthLabel: string) {
+  const d = new Date(`1 ${monthLabel}`);
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
 export default function App() {
@@ -54,13 +54,13 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [ownerLoading, setOwnerLoading] = useState(false);
-  const [ownerHostels, setOwnerHostels] = useState([]);
+  const [ownerHostels, setOwnerHostels] = useState<string[]>([]);
   const [ownerError, setOwnerError] = useState('');
 
-  const [rooms, setRooms] = useState([]);
-  const [tenants, setTenants] = useState([]);
-  const [fees, setFees] = useState([]);
-  const [complaints, setComplaints] = useState([]);
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [fees, setFees] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
 
   const [selectedFeeTenant, setSelectedFeeTenant] = useState('');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
@@ -103,7 +103,6 @@ export default function App() {
     monthDate: '',
     amount: '',
     paidAmount: '',
-    dueAmount: '',
     dueDate: '',
     paymentDate: '',
     paymentMethod: 'Cash',
@@ -234,31 +233,6 @@ export default function App() {
     setFeeSearch('');
     setComplaintSearch('');
     setOpenTenantId('');
-
-    setTenantForm((prev) => ({ ...prev, roomNo: '' }));
-    setFeeForm({
-      tenantName: '',
-      month: '',
-      monthDate: '',
-      amount: '',
-      paidAmount: '',
-      dueAmount: '',
-      dueDate: '',
-      paymentDate: '',
-      paymentMethod: 'Cash',
-      remarks: '',
-      status: 'Unpaid',
-    });
-    setComplaintForm({
-      tenantName: '',
-      roomNo: '',
-      type: 'Water',
-      text: '',
-      date: '',
-      priority: 'Medium',
-      status: 'Pending',
-      resolvedDate: '',
-    });
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
@@ -300,7 +274,7 @@ export default function App() {
   const searchedRooms = useMemo(() => {
     const list = showVacantOnly
       ? currentRooms.filter(
-          (room) => Number(room.totalBeds) - Number(room.occupiedBeds) > 0
+          (room) => Number(room.totalBeds || 0) - Number(room.occupiedBeds || 0) > 0
         )
       : currentRooms;
 
@@ -313,15 +287,12 @@ export default function App() {
 
   const filteredTenants = useMemo(() => {
     let list = currentTenants;
-
-    if (selectedRoom) {
-      list = list.filter((item) => item.roomNo === selectedRoom);
-    }
+    if (selectedRoom) list = list.filter((t) => t.roomNo === selectedRoom);
 
     if (tenantSearch.trim()) {
       const q = tenantSearch.toLowerCase();
-      list = list.filter((item) =>
-        `${item.name} ${item.roomNo} ${item.phone} ${item.aadhaarNo || ''}`
+      list = list.filter((t) =>
+        `${t.name} ${t.roomNo} ${t.phone} ${t.aadhaarNo || ''}`
           .toLowerCase()
           .includes(q)
       );
@@ -335,15 +306,10 @@ export default function App() {
     [currentTenants]
   );
 
-  const selectedTenantFeeRecords = useMemo(() => {
-    if (!selectedFeeTenant) return [];
-    return currentFees
-      .filter((fee) => fee.tenantName === selectedFeeTenant)
-      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-  }, [currentFees, selectedFeeTenant]);
-
   const displayedFeeRecords = useMemo(() => {
-    let base = selectedFeeTenant ? selectedTenantFeeRecords : currentFees;
+    let base = selectedFeeTenant
+      ? currentFees.filter((f) => f.tenantName === selectedFeeTenant)
+      : currentFees;
 
     if (showUnpaidOnly) {
       base = base.filter(
@@ -358,18 +324,13 @@ export default function App() {
       );
     }
 
-    return base;
-  }, [
-    selectedTenantFeeRecords,
-    currentFees,
-    selectedFeeTenant,
-    showUnpaidOnly,
-    feeSearch,
-  ]);
+    return [...base].sort(
+      (a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
+    );
+  }, [currentFees, selectedFeeTenant, showUnpaidOnly, feeSearch]);
 
   const displayedComplaints = useMemo(() => {
     let list = currentComplaints;
-
     if (complaintSearch.trim()) {
       const q = complaintSearch.toLowerCase();
       list = list.filter((c) =>
@@ -378,23 +339,19 @@ export default function App() {
           .includes(q)
       );
     }
-
     return list;
   }, [currentComplaints, complaintSearch]);
 
   const monthlyCollectedSummary = useMemo(() => {
-    const monthTotals = {};
-
+    const monthTotals: any = {};
     currentFees.forEach((fee) => {
       const paid = Number(fee.paidAmount || 0);
-      if (paid > 0) {
-        monthTotals[fee.month] = (monthTotals[fee.month] || 0) + paid;
-      }
+      if (paid > 0) monthTotals[fee.month] = (monthTotals[fee.month] || 0) + paid;
     });
 
     return Object.entries(monthTotals)
       .map(([month, total]) => ({ month, total }))
-      .sort((a, b) => monthToTimestamp(b.month) - monthToTimestamp(a.month));
+      .sort((a: any, b: any) => monthToTimestamp(b.month) - monthToTimestamp(a.month));
   }, [currentFees]);
 
   const currentMonthLabel = new Date().toLocaleString('en-US', {
@@ -408,38 +365,19 @@ export default function App() {
   );
 
   const currentMonthExpectedFee = useMemo(
-    () =>
-      currentMonthRecords.reduce(
-        (sum, item) => sum + Number(item.amount || 0),
-        0
-      ),
+    () => currentMonthRecords.reduce((s, i) => s + Number(i.amount || 0), 0),
     [currentMonthRecords]
   );
-
   const currentMonthCollected = useMemo(
-    () =>
-      currentMonthRecords.reduce(
-        (sum, item) => sum + Number(item.paidAmount || 0),
-        0
-      ),
+    () => currentMonthRecords.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
     [currentMonthRecords]
   );
-
   const currentMonthPending = useMemo(
-    () =>
-      currentMonthRecords.reduce(
-        (sum, item) => sum + Number(item.dueAmount || 0),
-        0
-      ),
+    () => currentMonthRecords.reduce((s, i) => s + Number(i.dueAmount || 0), 0),
     [currentMonthRecords]
   );
-
   const totalSecurityDepositCollected = useMemo(
-    () =>
-      currentTenants.reduce(
-        (sum, item) => sum + Number(item.securityDeposit || 0),
-        0
-      ),
+    () => currentTenants.reduce((s, i) => s + Number(i.securityDeposit || 0), 0),
     [currentTenants]
   );
 
@@ -447,7 +385,6 @@ export default function App() {
     () => currentComplaints.filter((c) => c.status !== 'Resolved').length,
     [currentComplaints]
   );
-
   const resolvedComplaints = useMemo(
     () => currentComplaints.filter((c) => c.status === 'Resolved').length,
     [currentComplaints]
@@ -455,14 +392,8 @@ export default function App() {
 
   const stats = useMemo(() => {
     const totalRooms = currentRooms.length;
-    const totalBeds = currentRooms.reduce(
-      (sum, item) => sum + Number(item.totalBeds || 0),
-      0
-    );
-    const occupiedBeds = currentRooms.reduce(
-      (sum, item) => sum + Number(item.occupiedBeds || 0),
-      0
-    );
+    const totalBeds = currentRooms.reduce((s, i) => s + Number(i.totalBeds || 0), 0);
+    const occupiedBeds = currentRooms.reduce((s, i) => s + Number(i.occupiedBeds || 0), 0);
     const vacantBeds = totalBeds - occupiedBeds;
 
     return {
@@ -475,29 +406,7 @@ export default function App() {
   }, [currentRooms, currentTenants]);
 
   const recentFees = useMemo(() => [...currentFees].slice(0, 5), [currentFees]);
-  const recentComplaints = useMemo(
-    () => [...currentComplaints].slice(0, 5),
-    [currentComplaints]
-  );
-
-  const recentActivities = useMemo(() => {
-    const items = [
-      ...currentTenants.map((t) => ({
-        text: `Tenant added: ${t.name}`,
-        createdAt: t.createdAt || 0,
-      })),
-      ...currentFees.map((f) => ({
-        text: `Fee record: ${f.tenantName} - ${f.month}`,
-        createdAt: f.createdAt || 0,
-      })),
-      ...currentComplaints.map((c) => ({
-        text: `Complaint: ${c.tenantName} - ${c.type}`,
-        createdAt: c.createdAt || 0,
-      })),
-    ];
-
-    return items.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
-  }, [currentTenants, currentFees, currentComplaints]);
+  const recentComplaints = useMemo(() => [...currentComplaints].slice(0, 5), [currentComplaints]);
 
   const handleLogin = async () => {
     try {
@@ -521,11 +430,10 @@ export default function App() {
       return;
     }
 
-    const duplicateRoom = currentRooms.some(
-      (room) => String(room.roomNo).trim() === String(roomForm.roomNo).trim()
+    const duplicate = currentRooms.some(
+      (r) => String(r.roomNo).trim() === String(roomForm.roomNo).trim()
     );
-
-    if (duplicateRoom) {
+    if (duplicate) {
       alert('Room number already exists');
       return;
     }
@@ -535,7 +443,7 @@ export default function App() {
       roomNo: roomForm.roomNo.trim(),
       block: roomForm.block.trim(),
       roomType: roomForm.roomType.trim(),
-      totalBeds: Number(roomForm.totalBeds),
+      totalBeds: Number(roomForm.totalBeds || 0),
       occupiedBeds: Number(roomForm.occupiedBeds || 0),
       availableBeds:
         Number(roomForm.totalBeds || 0) - Number(roomForm.occupiedBeds || 0),
@@ -553,6 +461,7 @@ export default function App() {
       monthlyRentDefault: '',
       status: 'Active',
     });
+
     alert('Room added successfully');
   };
 
@@ -562,44 +471,26 @@ export default function App() {
       return;
     }
 
-    if (
-      tenantForm.phone &&
-      String(tenantForm.phone).replace(/\D/g, '').length < 10
-    ) {
-      alert('Enter valid phone number');
-      return;
-    }
-
-    const roomMatch = currentRooms.find(
-      (item) => item.roomNo === tenantForm.roomNo
-    );
-
+    const roomMatch = currentRooms.find((r) => r.roomNo === tenantForm.roomNo);
     if (!roomMatch) {
       alert('Room not found');
       return;
     }
 
     const totalBeds = Number(roomMatch.totalBeds || 0);
-    const tenantsInRoom = currentTenants.filter(
-      (item) => item.roomNo === tenantForm.roomNo
-    );
-    const effectiveOccupied = Math.max(
-      Number(roomMatch.occupiedBeds || 0),
-      tenantsInRoom.length
-    );
+    const tenantsInRoom = currentTenants.filter((t) => t.roomNo === tenantForm.roomNo);
 
-    if (effectiveOccupied >= totalBeds) {
+    if (tenantsInRoom.length >= totalBeds) {
       alert('Room capacity is full. Cannot add more tenants.');
       return;
     }
 
-    const sameBedExists = tenantsInRoom.some(
-      (item) =>
-        String(item.bedNo).trim().toLowerCase() ===
+    const sameBed = tenantsInRoom.some(
+      (t) =>
+        String(t.bedNo).trim().toLowerCase() ===
         String(tenantForm.bedNo).trim().toLowerCase()
     );
-
-    if (sameBedExists) {
+    if (sameBed) {
       alert('This bed number is already occupied in the room.');
       return;
     }
@@ -614,18 +505,19 @@ export default function App() {
       joiningDate: tenantForm.joiningDate,
       roomNo: tenantForm.roomNo.trim(),
       bedNo: tenantForm.bedNo.trim(),
-      monthlyFee: tenantForm.monthlyFee,
-      securityDeposit: tenantForm.securityDeposit,
-      advancePaid: tenantForm.advancePaid,
+      monthlyFee: Number(tenantForm.monthlyFee || 0),
+      securityDeposit: Number(tenantForm.securityDeposit || 0),
+      advancePaid: Number(tenantForm.advancePaid || 0),
       address: tenantForm.address,
       notes: tenantForm.notes,
       status: tenantForm.status,
       createdAt: Date.now(),
     });
 
+    const newOccupied = tenantsInRoom.length + 1;
     await updateDoc(doc(db, 'rooms', roomMatch.id), {
-      occupiedBeds: effectiveOccupied + 1,
-      availableBeds: Math.max(0, totalBeds - (effectiveOccupied + 1)),
+      occupiedBeds: newOccupied,
+      availableBeds: Math.max(0, totalBeds - newOccupied),
     });
 
     setTenantForm({
@@ -663,7 +555,6 @@ export default function App() {
         : 0;
 
     const dueAmount = Math.max(0, amount - paidAmount);
-
     const finalStatus =
       dueAmount === 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Unpaid';
 
@@ -686,14 +577,12 @@ export default function App() {
     });
 
     setSelectedFeeTenant(feeForm.tenantName);
-
     setFeeForm({
       tenantName: feeForm.tenantName,
       month: '',
       monthDate: '',
       amount: '',
       paidAmount: '',
-      dueAmount: '',
       dueDate: '',
       paymentDate: '',
       paymentMethod: 'Cash',
@@ -737,7 +626,7 @@ export default function App() {
     alert('Complaint added successfully');
   };
 
-  const toggleFeeStatus = async (id, currentStatus, currentAmount) => {
+  const toggleFeeStatus = async (id: string, currentStatus: string, currentAmount: any) => {
     let newStatus = 'Paid';
     let paidAmount = Number(currentAmount || 0);
     let dueAmount = 0;
@@ -758,48 +647,29 @@ export default function App() {
     });
   };
 
-  const toggleComplaintStatus = async (id, currentStatus) => {
+  const toggleComplaintStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'Resolved' ? 'Pending' : 'Resolved';
-
     await updateDoc(doc(db, 'complaints', id), {
       status: newStatus,
-      resolvedDate:
-        newStatus === 'Resolved' ? new Date().toLocaleDateString() : '',
+      resolvedDate: newStatus === 'Resolved' ? new Date().toLocaleDateString() : '',
     });
   };
 
-  const deleteItem = async (collectionName, id) => {
+  const deleteItem = async (collectionName: string, id: string) => {
     const ok = window.confirm('Are you sure you want to delete this record?');
     if (!ok) return;
     await deleteDoc(doc(db, collectionName, id));
     alert('Deleted successfully');
   };
 
-  const deleteTenantWithRelatedData = async (tenant) => {
-    const confirmDelete = window.confirm(
-      `Delete ${tenant.name} and all related fee/complaint data?`
-    );
-    if (!confirmDelete) return;
+  const deleteTenantWithRelatedData = async (tenant: any) => {
+    const ok = window.confirm(`Delete ${tenant.name} and all related fee/complaint data?`);
+    if (!ok) return;
 
     try {
-      const roomMatch = currentRooms.find((item) => item.roomNo === tenant.roomNo);
-      const tenantsInRoom = currentTenants.filter(
-        (item) => item.roomNo === tenant.roomNo
-      );
+      const roomMatch = currentRooms.find((r) => r.roomNo === tenant.roomNo);
 
-      if (roomMatch) {
-        const currentOccupied = Math.max(
-          Number(roomMatch.occupiedBeds || 0),
-          tenantsInRoom.length
-        );
-        const newOccupied = Math.max(0, currentOccupied - 1);
-        const totalBeds = Number(roomMatch.totalBeds || 0);
-
-        await updateDoc(doc(db, 'rooms', roomMatch.id), {
-          occupiedBeds: newOccupied,
-          availableBeds: Math.max(0, totalBeds - newOccupied),
-        });
-      }
+      await deleteDoc(doc(db, 'tenants', tenant.id));
 
       const feesQuery = query(
         collection(db, 'fees'),
@@ -821,11 +691,24 @@ export default function App() {
         await deleteDoc(doc(db, 'complaints', complaintDoc.id));
       }
 
-      await deleteDoc(doc(db, 'tenants', tenant.id));
+      if (roomMatch) {
+        const remainingRoomTenantsQuery = query(
+          collection(db, 'tenants'),
+          where('hostel', '==', selectedHostel),
+          where('roomNo', '==', tenant.roomNo)
+        );
+        const remainingRoomTenantsSnapshot = await getDocs(remainingRoomTenantsQuery);
+        const remainingCount = remainingRoomTenantsSnapshot.docs.length;
+        const totalBeds = Number(roomMatch.totalBeds || 0);
 
-      if (selectedFeeTenant === tenant.name) {
-        setSelectedFeeTenant('');
+        await updateDoc(doc(db, 'rooms', roomMatch.id), {
+          occupiedBeds: remainingCount,
+          availableBeds: Math.max(0, totalBeds - remainingCount),
+        });
       }
+
+      if (selectedFeeTenant === tenant.name) setSelectedFeeTenant('');
+      if (openTenantId === tenant.id) setOpenTenantId('');
 
       alert('Tenant and related records deleted successfully');
     } catch {
@@ -833,14 +716,14 @@ export default function App() {
     }
   };
 
-  const openRoomTenants = (roomNo) => {
+  const openRoomTenants = (roomNo: string) => {
     setSelectedRoom(roomNo);
     setTenantForm((prev) => ({ ...prev, roomNo }));
     setShowVacantOnly(false);
     setActiveTab('tenants');
   };
 
-  const openTenantFees = (tenantName) => {
+  const openTenantFees = (tenantName: string) => {
     setSelectedFeeTenant(tenantName);
     setFeeForm((prev) => ({ ...prev, tenantName }));
     setShowUnpaidOnly(false);
@@ -872,7 +755,6 @@ export default function App() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-
           <input
             style={styles.input}
             type="password"
@@ -931,7 +813,6 @@ export default function App() {
           <StatCard title="Vacant Beds" value={stats.vacantBeds} sub={`Occupied: ${stats.occupiedBeds}`} onClick={() => {
             setActiveTab('rooms');
             setShowVacantOnly(true);
-            setShowUnpaidOnly(false);
           }} />
           <StatCard title="Total Tenants" value={stats.totalTenants} sub="Saved online" onClick={() => setActiveTab('tenants')} />
           <StatCard title="Expected Fee" value={formatCurrency(currentMonthExpectedFee)} sub={currentMonthLabel} />
@@ -939,7 +820,6 @@ export default function App() {
           <StatCard title="Pending Fee" value={formatCurrency(currentMonthPending)} sub={currentMonthLabel} onClick={() => {
             setActiveTab('fees');
             setShowUnpaidOnly(true);
-            setShowVacantOnly(false);
           }} />
           <StatCard title="Security Deposit" value={formatCurrency(totalSecurityDepositCollected)} sub="Collected" />
           <StatCard title="Active Complaints" value={activeComplaints} sub="Open" onClick={() => setActiveTab('complaints')} />
@@ -958,48 +838,9 @@ export default function App() {
             {monthlyCollectedSummary.length === 0 ? (
               <span style={styles.collectionSub}>No paid data yet</span>
             ) : (
-              monthlyCollectedSummary.slice(0, 6).map((item) => (
+              monthlyCollectedSummary.slice(0, 6).map((item: any) => (
                 <p key={item.month} style={styles.summaryRow}>
                   {item.month}: {formatCurrency(item.total)}
-                </p>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div style={styles.grid3}>
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Recent Activity</h2>
-            {recentActivities.length === 0 ? (
-              <p style={styles.empty}>No recent activity</p>
-            ) : (
-              recentActivities.map((item, idx) => (
-                <p key={idx} style={styles.rowSub}>{item.text}</p>
-              ))
-            )}
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Recent Complaints</h2>
-            {recentComplaints.length === 0 ? (
-              <p style={styles.empty}>No recent complaints</p>
-            ) : (
-              recentComplaints.map((item) => (
-                <p key={item.id} style={styles.rowSub}>
-                  {item.tenantName} - {item.type} - {item.status}
-                </p>
-              ))
-            )}
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Recent Payments</h2>
-            {recentFees.length === 0 ? (
-              <p style={styles.empty}>No recent payments</p>
-            ) : (
-              recentFees.map((item) => (
-                <p key={item.id} style={styles.rowSub}>
-                  {item.tenantName} - {item.month} - {formatCurrency(item.paidAmount || 0)}
                 </p>
               ))
             )}
@@ -1015,11 +856,7 @@ export default function App() {
           ].map(([key, label]) => (
             <button
               key={key}
-              onClick={() => {
-                setActiveTab(key);
-                if (key !== 'fees') setShowUnpaidOnly(false);
-                if (key !== 'rooms') setShowVacantOnly(false);
-              }}
+              onClick={() => setActiveTab(key)}
               style={{
                 ...styles.tab,
                 ...(activeTab === key ? styles.activeTab : {}),
@@ -1056,14 +893,9 @@ export default function App() {
                 value={roomSearch}
                 onChange={(e) => setRoomSearch(e.target.value)}
               />
-              {showVacantOnly ? (
-                <p style={styles.filterNote}>Showing only rooms with vacant beds</p>
-              ) : null}
 
               {searchedRooms.length === 0 ? (
-                <p style={styles.empty}>
-                  {showVacantOnly ? 'No rooms with vacancy' : 'No rooms yet'}
-                </p>
+                <p style={styles.empty}>No rooms yet</p>
               ) : (
                 searchedRooms.map((room) => (
                   <div key={room.id} style={styles.row}>
@@ -1100,6 +932,7 @@ export default function App() {
               <h2 style={styles.cardTitle}>
                 {selectedRoom ? `Add Tenant for Room ${selectedRoom}` : 'Add Tenant'}
               </h2>
+
               <input style={styles.input} placeholder="Full Name" value={tenantForm.name} onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })} />
               <input style={styles.input} placeholder="Phone Number" value={tenantForm.phone} onChange={(e) => setTenantForm({ ...tenantForm, phone: e.target.value })} />
               <input style={styles.input} placeholder="Parent / Emergency Contact" value={tenantForm.parentPhone} onChange={(e) => setTenantForm({ ...tenantForm, parentPhone: e.target.value })} />
@@ -1128,6 +961,7 @@ export default function App() {
                 value={tenantSearch}
                 onChange={(e) => setTenantSearch(e.target.value)}
               />
+
               {selectedRoom ? (
                 <button style={styles.smallBtn} onClick={() => setSelectedRoom('')}>
                   Show All Tenants
@@ -1140,13 +974,9 @@ export default function App() {
                 filteredTenants.map((tenant) => (
                   <div key={tenant.id} style={styles.row}>
                     <div style={{ flex: 1 }}>
-                      <button
-                        style={styles.linkBtn}
-                        onClick={() => openTenantFees(tenant.name)}
-                      >
+                      <button style={styles.linkBtn} onClick={() => openTenantFees(tenant.name)}>
                         {tenant.name}
                       </button>
-
                       <p style={styles.rowSub}>
                         {tenant.phone || 'No phone'} | Room {tenant.roomNo}
                       </p>
@@ -1157,12 +987,8 @@ export default function App() {
                           <p style={styles.rowSub}>Parent Phone: {tenant.parentPhone || '-'}</p>
                           <p style={styles.rowSub}>Joining Date: {tenant.joiningDate || '-'}</p>
                           <p style={styles.rowSub}>Status: {tenant.status || 'Active'}</p>
-                          <p style={styles.rowSub}>
-                            Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)}
-                          </p>
-                          <p style={styles.rowSub}>
-                            Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}
-                          </p>
+                          <p style={styles.rowSub}>Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)}</p>
+                          <p style={styles.rowSub}>Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}</p>
                           <p style={styles.rowSub}>Aadhaar No: {tenant.aadhaarNo || '-'}</p>
                           <p style={styles.rowSub}>Address: {tenant.address || '-'}</p>
                           <p style={styles.rowSub}>Notes: {tenant.notes || '-'}</p>
@@ -1173,9 +999,7 @@ export default function App() {
                     <div style={styles.rowActions}>
                       <button
                         style={styles.smallBtn}
-                        onClick={() =>
-                          setOpenTenantId(openTenantId === tenant.id ? '' : tenant.id)
-                        }
+                        onClick={() => setOpenTenantId(openTenantId === tenant.id ? '' : tenant.id)}
                       >
                         {openTenantId === tenant.id ? 'Hide Details' : 'Details'}
                       </button>
@@ -1204,14 +1028,11 @@ export default function App() {
                 onChange={(e) => {
                   setFeeForm({ ...feeForm, tenantName: e.target.value });
                   setSelectedFeeTenant(e.target.value);
-                  setShowUnpaidOnly(false);
                 }}
               >
                 <option value="">Select Tenant</option>
                 {tenantNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
+                  <option key={name} value={name}>{name}</option>
                 ))}
               </select>
 
@@ -1227,17 +1048,12 @@ export default function App() {
                         year: 'numeric',
                       })
                     : '';
-
-                  setFeeForm({
-                    ...feeForm,
-                    monthDate: selectedDate,
-                    month: formattedMonth,
-                  });
+                  setFeeForm({ ...feeForm, monthDate: selectedDate, month: formattedMonth });
                 }}
               />
 
               <input style={styles.input} placeholder="Total Amount" value={feeForm.amount} onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })} />
-              <input style={styles.input} placeholder="Paid Amount (for partial/paid)" value={feeForm.paidAmount} onChange={(e) => setFeeForm({ ...feeForm, paidAmount: e.target.value })} />
+              <input style={styles.input} placeholder="Paid Amount" value={feeForm.paidAmount} onChange={(e) => setFeeForm({ ...feeForm, paidAmount: e.target.value })} />
               <input style={styles.input} type="date" value={feeForm.dueDate} onChange={(e) => setFeeForm({ ...feeForm, dueDate: e.target.value })} />
               <input style={styles.input} type="date" value={feeForm.paymentDate} onChange={(e) => setFeeForm({ ...feeForm, paymentDate: e.target.value })} />
               <select style={styles.select} value={feeForm.paymentMethod} onChange={(e) => setFeeForm({ ...feeForm, paymentMethod: e.target.value })}>
@@ -1246,24 +1062,13 @@ export default function App() {
                 <option value="Bank Transfer">Bank Transfer</option>
               </select>
               <textarea style={styles.textarea} placeholder="Remarks" value={feeForm.remarks} onChange={(e) => setFeeForm({ ...feeForm, remarks: e.target.value })} />
-              <select
-                style={styles.select}
-                value={feeForm.status}
-                onChange={(e) =>
-                  setFeeForm({
-                    ...feeForm,
-                    status: e.target.value,
-                  })
-                }
-              >
+              <select style={styles.select} value={feeForm.status} onChange={(e) => setFeeForm({ ...feeForm, status: e.target.value })}>
                 <option value="Paid">Paid</option>
                 <option value="Unpaid">Unpaid</option>
                 <option value="Partial">Partial</option>
               </select>
 
-              <button style={styles.primaryBtn} onClick={addFee}>
-                Add Fee Record
-              </button>
+              <button style={styles.primaryBtn} onClick={addFee}>Add Fee Record</button>
             </div>
 
             <div style={styles.card}>
@@ -1275,34 +1080,17 @@ export default function App() {
                 onChange={(e) => setFeeSearch(e.target.value)}
               />
 
-              {showUnpaidOnly ? (
-                <p style={styles.filterNote}>Showing only unpaid fee records</p>
-              ) : null}
-
-              {!selectedFeeTenant && !showUnpaidOnly ? (
-                <p style={styles.empty}>Select a tenant to see monthly fee history</p>
-              ) : displayedFeeRecords.length === 0 ? (
-                <p style={styles.empty}>
-                  {showUnpaidOnly
-                    ? 'No unpaid fee records'
-                    : `No monthly fee records for ${selectedFeeTenant}`}
-                </p>
+              {displayedFeeRecords.length === 0 ? (
+                <p style={styles.empty}>No fee records</p>
               ) : (
                 displayedFeeRecords.map((fee) => (
                   <div key={fee.id} style={styles.row}>
                     <div>
                       <strong>{fee.tenantName}</strong>
                       <p style={styles.rowSub}>
-                        Month: {fee.month} | Total: {formatCurrency(fee.amount)} | Paid:{' '}
-                        {formatCurrency(fee.paidAmount || 0)} | Pending:{' '}
-                        {formatCurrency(fee.dueAmount || 0)}
-                      </p>
-                      <p style={styles.rowSub}>
-                        Due Date: {fee.dueDate || '-'} | Payment Date: {fee.paymentDate || '-'} | Method:{' '}
-                        {fee.paymentMethod || '-'}
+                        Month: {fee.month} | Total: {formatCurrency(fee.amount)} | Paid: {formatCurrency(fee.paidAmount || 0)} | Pending: {formatCurrency(fee.dueAmount || 0)}
                       </p>
                     </div>
-
                     <div style={styles.rowActions}>
                       <span
                         style={{
@@ -1316,18 +1104,10 @@ export default function App() {
                       >
                         {fee.status}
                       </span>
-
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() => toggleFeeStatus(fee.id, fee.status, fee.amount)}
-                      >
+                      <button style={styles.smallBtn} onClick={() => toggleFeeStatus(fee.id, fee.status, fee.amount)}>
                         Toggle
                       </button>
-
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() => deleteItem('fees', fee.id)}
-                      >
+                      <button style={styles.smallBtn} onClick={() => deleteItem('fees', fee.id)}>
                         Delete
                       </button>
                     </div>
@@ -1347,21 +1127,20 @@ export default function App() {
                 value={complaintForm.tenantName}
                 onChange={(e) => {
                   const tenantName = e.target.value;
-                  const foundTenant = currentTenants.find((t) => t.name === tenantName);
+                  const found = currentTenants.find((t) => t.name === tenantName);
                   setComplaintForm({
                     ...complaintForm,
                     tenantName,
-                    roomNo: foundTenant?.roomNo || '',
+                    roomNo: found?.roomNo || '',
                   });
                 }}
               >
                 <option value="">Select Tenant</option>
                 {tenantNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
+                  <option key={name} value={name}>{name}</option>
                 ))}
               </select>
+
               <input style={styles.input} placeholder="Room Number" value={complaintForm.roomNo} onChange={(e) => setComplaintForm({ ...complaintForm, roomNo: e.target.value })} />
               <select style={styles.select} value={complaintForm.type} onChange={(e) => setComplaintForm({ ...complaintForm, type: e.target.value })}>
                 <option value="Water">Water</option>
@@ -1377,17 +1156,8 @@ export default function App() {
                 <option value="Medium">Medium</option>
                 <option value="High">High</option>
               </select>
-              <textarea
-                style={styles.textarea}
-                placeholder="Write complaint here"
-                value={complaintForm.text}
-                onChange={(e) =>
-                  setComplaintForm({ ...complaintForm, text: e.target.value })
-                }
-              />
-              <button style={styles.primaryBtn} onClick={addComplaint}>
-                Add Complaint
-              </button>
+              <textarea style={styles.textarea} placeholder="Write complaint here" value={complaintForm.text} onChange={(e) => setComplaintForm({ ...complaintForm, text: e.target.value })} />
+              <button style={styles.primaryBtn} onClick={addComplaint}>Add Complaint</button>
             </div>
 
             <div style={styles.card}>
@@ -1398,6 +1168,7 @@ export default function App() {
                 value={complaintSearch}
                 onChange={(e) => setComplaintSearch(e.target.value)}
               />
+
               {displayedComplaints.length === 0 ? (
                 <p style={styles.empty}>No complaints yet</p>
               ) : (
@@ -1408,33 +1179,21 @@ export default function App() {
                       <p style={styles.rowSub}>
                         Room {item.roomNo || '-'} | {item.type} | {item.priority}
                       </p>
-                      <p style={styles.rowSub}>
-                        {item.text}
-                      </p>
+                      <p style={styles.rowSub}>{item.text}</p>
                     </div>
                     <div style={styles.rowActions}>
                       <span
                         style={{
                           ...styles.badge,
-                          ...(item.status === 'Resolved'
-                            ? styles.greenBadge
-                            : styles.redBadge),
+                          ...(item.status === 'Resolved' ? styles.greenBadge : styles.redBadge),
                         }}
                       >
                         {item.status}
                       </span>
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() =>
-                          toggleComplaintStatus(item.id, item.status)
-                        }
-                      >
+                      <button style={styles.smallBtn} onClick={() => toggleComplaintStatus(item.id, item.status)}>
                         Toggle
                       </button>
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() => deleteItem('complaints', item.id)}
-                      >
+                      <button style={styles.smallBtn} onClick={() => deleteItem('complaints', item.id)}>
                         Delete
                       </button>
                     </div>
@@ -1452,10 +1211,7 @@ export default function App() {
 function StatCard({ title, value, sub, onClick }) {
   return (
     <div
-      style={{
-        ...styles.statCard,
-        cursor: onClick ? 'pointer' : 'default',
-      }}
+      style={{ ...styles.statCard, cursor: onClick ? 'pointer' : 'default' }}
       onClick={onClick}
     >
       <p style={styles.statTitle}>{title}</p>
@@ -1465,7 +1221,7 @@ function StatCard({ title, value, sub, onClick }) {
   );
 }
 
-const styles = {
+const styles: any = {
   page: {
     minHeight: '100vh',
     background: '#f8fafc',
@@ -1556,35 +1312,13 @@ const styles = {
     padding: 20,
     boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
   },
-  collectionTitle: {
-    margin: 0,
-    color: '#64748b',
-    fontSize: 14,
-  },
-  collectionValue: {
-    margin: '10px 0 6px',
-    fontSize: 28,
-    color: '#0f172a',
-  },
-  collectionSub: {
-    color: '#64748b',
-    fontSize: 13,
-  },
-  summaryRow: {
-    margin: '6px 0 0',
-    color: '#0f172a',
-    fontSize: 14,
-    fontWeight: 600,
-  },
+  collectionTitle: { margin: 0, color: '#64748b', fontSize: 14 },
+  collectionValue: { margin: '10px 0 6px', fontSize: 28, color: '#0f172a' },
+  collectionSub: { color: '#64748b', fontSize: 13 },
+  summaryRow: { margin: '6px 0 0', color: '#0f172a', fontSize: 14, fontWeight: 600 },
   grid2: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))',
-    gap: 16,
-    marginBottom: 20,
-  },
-  grid3: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))',
     gap: 16,
     marginBottom: 20,
   },
@@ -1644,12 +1378,7 @@ const styles = {
     borderBottom: '1px solid #e2e8f0',
   },
   rowSub: { margin: '4px 0 0', fontSize: 13, color: '#64748b' },
-  rowActions: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
+  rowActions: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   badge: {
     background: '#e2e8f0',
     color: '#334155',
@@ -1680,13 +1409,6 @@ const styles = {
     textAlign: 'left',
   },
   empty: { color: '#64748b', margin: 0 },
-  filterNote: {
-    marginTop: 0,
-    marginBottom: 12,
-    fontSize: 13,
-    color: '#475569',
-    fontWeight: 600,
-  },
   authPage: {
     minHeight: '100vh',
     display: 'flex',
