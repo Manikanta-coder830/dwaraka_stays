@@ -273,9 +273,12 @@ export default function App() {
 
   const searchedRooms = useMemo(() => {
     const list = showVacantOnly
-      ? currentRooms.filter(
-          (room) => Number(room.totalBeds || 0) - Number(room.occupiedBeds || 0) > 0
-        )
+      ? currentRooms.filter((room) => {
+          const occupied = currentTenants.filter(
+            (t) => t.roomNo === room.roomNo
+          ).length;
+          return Number(room.totalBeds || 0) - occupied > 0;
+        })
       : currentRooms;
 
     return list.filter((room) =>
@@ -283,7 +286,7 @@ export default function App() {
         .toLowerCase()
         .includes(roomSearch.toLowerCase())
     );
-  }, [currentRooms, showVacantOnly, roomSearch]);
+  }, [currentRooms, currentTenants, showVacantOnly, roomSearch]);
 
   const filteredTenants = useMemo(() => {
     let list = currentTenants;
@@ -392,9 +395,12 @@ export default function App() {
 
   const stats = useMemo(() => {
     const totalRooms = currentRooms.length;
-    const totalBeds = currentRooms.reduce((s, i) => s + Number(i.totalBeds || 0), 0);
-    const occupiedBeds = currentRooms.reduce((s, i) => s + Number(i.occupiedBeds || 0), 0);
-    const vacantBeds = totalBeds - occupiedBeds;
+    const totalBeds = currentRooms.reduce(
+      (sum, item) => sum + Number(item.totalBeds || 0),
+      0
+    );
+    const occupiedBeds = currentTenants.length;
+    const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
 
     return {
       totalRooms,
@@ -404,9 +410,6 @@ export default function App() {
       totalTenants: currentTenants.length,
     };
   }, [currentRooms, currentTenants]);
-
-  const recentFees = useMemo(() => [...currentFees].slice(0, 5), [currentFees]);
-  const recentComplaints = useMemo(() => [...currentComplaints].slice(0, 5), [currentComplaints]);
 
   const handleLogin = async () => {
     try {
@@ -897,30 +900,34 @@ export default function App() {
               {searchedRooms.length === 0 ? (
                 <p style={styles.empty}>No rooms yet</p>
               ) : (
-                searchedRooms.map((room) => (
-                  <div key={room.id} style={styles.row}>
-                    <div>
-                      <button style={styles.linkBtn} onClick={() => openRoomTenants(room.roomNo)}>
-                        Room {room.roomNo}
-                      </button>
-                      <p style={styles.rowSub}>
-                        Block: {room.block || '-'} | Type: {room.roomType || '-'}
-                      </p>
-                      <p style={styles.rowSub}>
-                        Beds: {room.totalBeds} | Occupied: {room.occupiedBeds} | Available:{' '}
-                        {Math.max(0, Number(room.totalBeds) - Number(room.occupiedBeds))}
-                      </p>
+                searchedRooms.map((room) => {
+                  const occupied = currentTenants.filter(
+                    (t) => t.roomNo === room.roomNo
+                  ).length;
+                  const available = Math.max(0, Number(room.totalBeds || 0) - occupied);
+
+                  return (
+                    <div key={room.id} style={styles.row}>
+                      <div>
+                        <button style={styles.linkBtn} onClick={() => openRoomTenants(room.roomNo)}>
+                          Room {room.roomNo}
+                        </button>
+                        <p style={styles.rowSub}>
+                          Block: {room.block || '-'} | Type: {room.roomType || '-'}
+                        </p>
+                        <p style={styles.rowSub}>
+                          Beds: {room.totalBeds} | Occupied: {occupied} | Available: {available}
+                        </p>
+                      </div>
+                      <div style={styles.rowActions}>
+                        <span style={styles.badge}>{available} Vacant</span>
+                        <button style={styles.smallBtn} onClick={() => deleteItem('rooms', room.id)}>
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    <div style={styles.rowActions}>
-                      <span style={styles.badge}>
-                        {Math.max(0, Number(room.totalBeds) - Number(room.occupiedBeds))} Vacant
-                      </span>
-                      <button style={styles.smallBtn} onClick={() => deleteItem('rooms', room.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
