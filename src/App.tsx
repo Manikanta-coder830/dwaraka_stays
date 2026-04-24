@@ -790,6 +790,71 @@ export default function App() {
     { title: 'Resolved Complaints', value: resolvedComplaints, sub: 'Closed', teamIndex: 9, onClick: () => setActiveTab('complaints') },
   ];
 
+
+  const occupancyPercent = stats.totalBeds
+    ? Math.round((stats.occupiedBeds / stats.totalBeds) * 100)
+    : 0;
+
+  const feeCollectionPercent = currentMonthExpectedFee
+    ? Math.round((currentMonthCollected / currentMonthExpectedFee) * 100)
+    : 0;
+
+  const alertCards = [
+    {
+      title: 'Vacant Beds',
+      value: stats.vacantBeds,
+      text: stats.vacantBeds > 0 ? 'Beds available for new tenants' : 'All beds are occupied',
+      type: stats.vacantBeds > 0 ? 'good' : 'warn',
+    },
+    {
+      title: 'Pending Fee',
+      value: formatCurrency(currentMonthPending),
+      text: currentMonthPending > 0 ? 'Collection follow-up needed' : 'No pending amount this month',
+      type: currentMonthPending > 0 ? 'danger' : 'good',
+    },
+    {
+      title: 'Complaints',
+      value: activeComplaints,
+      text: activeComplaints > 0 ? 'Open complaints pending' : 'No active complaints',
+      type: activeComplaints > 0 ? 'warn' : 'good',
+    },
+  ];
+
+  const downloadTenantCSV = () => {
+    const rows = [
+      ['Name', 'Phone', 'Parent Phone', 'Room', 'Bed', 'Joining Date', 'Monthly Fee', 'Security Deposit', 'Aadhaar No', 'Address', 'Status'],
+      ...currentTenants.map((t) => [
+        t.name || '',
+        t.phone || '',
+        t.parentPhone || '',
+        t.roomNo || '',
+        t.bedNo || '',
+        t.joiningDate || '',
+        t.monthlyFee || 0,
+        t.securityDeposit || 0,
+        t.aadhaarNo || '',
+        t.address || '',
+        t.status || 'Active',
+      ]),
+    ];
+
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${selectedHostel || 'hostel'}-tenant-report.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printMonthlyReport = () => {
+    window.print();
+  };
+
   if (authLoading || ownerLoading) {
     return (
       <div style={styles.authPage}>
@@ -804,6 +869,7 @@ export default function App() {
     return (
       <div style={styles.authPage}>
         <div style={styles.authCard}>
+          <img src="/dwaraka-logo.png" alt="Dwaraka Premium Stays" style={styles.loginLogo} />
           <p style={styles.smallDark}>DWARAKA STAYS</p>
           <h2 style={styles.authTitle}>Owner Login</h2>
           <p style={styles.authSub}>Only admin can access the dashboard</p>
@@ -838,15 +904,18 @@ export default function App() {
       <div style={styles.container}>
         <div style={styles.hero}>
           <span style={styles.heroWatermark}>DWARAKA</span>
-          <div style={{ position: 'relative', zIndex: 2 }}>
-            <p style={styles.small}>DWARAKA STAYS</p>
+          <div style={{ position: 'relative', zIndex: 2, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+            <img src="/dwaraka-logo.png" alt="Dwaraka Premium Stays" style={styles.dashboardLogo} />
+            <div>
+              <p style={styles.small}>DWARAKA STAYS</p>
             <h1 style={styles.title}>
               <span style={styles.ogTitle}>DWARAKA</span>
-              <span style={styles.titleSmall}> Hostel Management Dashboard</span>
+              <span style={styles.titleSmall}> Engineers PG • Royal Hostel Management</span>
             </h1>
             <p style={styles.subtitle}>
               Manage rooms, tenants, payments, complaints and deleted tenant history.
             </p>
+            </div>
           </div>
 
           <div style={{ ...styles.heroRight, position: 'relative', zIndex: 2 }}>
@@ -867,6 +936,14 @@ export default function App() {
 
             <button style={styles.historyBtn} onClick={() => setActiveTab('history')}>
               History
+            </button>
+
+            <button style={styles.reportBtn} onClick={downloadTenantCSV}>
+              Download CSV
+            </button>
+
+            <button style={styles.reportBtn} onClick={printMonthlyReport}>
+              Print Report
             </button>
 
             <button style={styles.logoutBtn} onClick={handleLogout}>
@@ -906,6 +983,57 @@ export default function App() {
                 </p>
               ))
             )}
+          </div>
+        </div>
+
+
+        <div style={styles.insightGrid}>
+          <div style={styles.premiumPanel}>
+            <h2 style={styles.cardTitle}>Royal Dashboard Insights</h2>
+            <div style={styles.chartItem}>
+              <div style={styles.chartTop}>
+                <span>Occupancy</span>
+                <strong>{occupancyPercent}%</strong>
+              </div>
+              <div style={styles.progressTrack}>
+                <div style={{ ...styles.progressFill, width: `${occupancyPercent}%` }} />
+              </div>
+              <p style={styles.rowSub}>{stats.occupiedBeds} occupied out of {stats.totalBeds} beds</p>
+            </div>
+
+            <div style={styles.chartItem}>
+              <div style={styles.chartTop}>
+                <span>Fee Collection</span>
+                <strong>{feeCollectionPercent}%</strong>
+              </div>
+              <div style={styles.progressTrack}>
+                <div style={{ ...styles.progressFillGold, width: `${feeCollectionPercent}%` }} />
+              </div>
+              <p style={styles.rowSub}>{formatCurrency(currentMonthCollected)} collected this month</p>
+            </div>
+          </div>
+
+          <div style={styles.premiumPanel}>
+            <h2 style={styles.cardTitle}>Smart Alerts</h2>
+            {alertCards.map((alert) => (
+              <div
+                key={alert.title}
+                style={{
+                  ...styles.alertRow,
+                  ...(alert.type === 'danger'
+                    ? styles.alertDanger
+                    : alert.type === 'warn'
+                    ? styles.alertWarn
+                    : styles.alertGood),
+                }}
+              >
+                <div>
+                  <strong>{alert.title}</strong>
+                  <p style={styles.alertText}>{alert.text}</p>
+                </div>
+                <span style={styles.alertValue}>{alert.value}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -956,6 +1084,35 @@ export default function App() {
                 value={roomSearch}
                 onChange={(e) => setRoomSearch(e.target.value)}
               />
+
+              <h3 style={styles.miniTitle}>Room Visual Layout</h3>
+              <div style={styles.roomGrid}>
+                {searchedRooms.map((room) => {
+                  const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
+                  const totalBeds = Number(room.totalBeds || 0);
+                  return (
+                    <button
+                      key={`visual-${room.id}`}
+                      style={styles.roomTile}
+                      onClick={() => openRoomTenants(room.roomNo)}
+                    >
+                      <strong>Room {room.roomNo}</strong>
+                      <div style={styles.bedDots}>
+                        {Array.from({ length: totalBeds }).map((_, index) => (
+                          <span
+                            key={index}
+                            style={{
+                              ...styles.bedDot,
+                              ...(index < occupied ? styles.bedOccupied : styles.bedVacant),
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <small>{occupied}/{totalBeds} filled</small>
+                    </button>
+                  );
+                })}
+              </div>
 
               {searchedRooms.length === 0 ? (
                 <p style={styles.empty}>No rooms yet</p>
@@ -1359,7 +1516,7 @@ const styles: any = {
   page: {
     minHeight: '100vh',
     background:
-      'linear-gradient(135deg, #e0f2fe 0%, #fdf2f8 45%, #fff7ed 100%)',
+      'radial-gradient(circle at top left, rgba(250,204,21,0.18), transparent 32%), linear-gradient(135deg, #020617 0%, #111827 45%, #1e1b4b 100%)',
     padding: 20,
     fontFamily: 'Arial, sans-serif',
     color: '#0f172a',
@@ -1385,6 +1542,15 @@ const styles: any = {
     gap: 12,
     alignItems: 'flex-end',
     flexWrap: 'wrap',
+  },
+  dashboardLogo: {
+    width: 92,
+    height: 92,
+    objectFit: 'cover',
+    borderRadius: 24,
+    border: '2px solid rgba(250,204,21,0.75)',
+    boxShadow: '0 12px 26px rgba(0,0,0,0.35)',
+    background: '#020617',
   },
   small: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#e0f2fe' },
   smallDark: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#64748b' },
@@ -1552,6 +1718,129 @@ const styles: any = {
     cursor: 'pointer',
     boxShadow: '0 8px 18px rgba(22,163,74,0.25)',
   },
+
+  reportBtn: {
+    padding: '12px 16px',
+    borderRadius: 14,
+    border: '1px solid rgba(250,204,21,0.7)',
+    background: 'rgba(250,204,21,0.16)',
+    color: '#fef3c7',
+    fontWeight: 800,
+    cursor: 'pointer',
+    height: 46,
+    backdropFilter: 'blur(10px)',
+  },
+  insightGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))',
+    gap: 16,
+    marginBottom: 20,
+  },
+  premiumPanel: {
+    background: 'linear-gradient(135deg, rgba(2,6,23,0.96), rgba(30,41,59,0.95))',
+    border: '1px solid rgba(250,204,21,0.35)',
+    borderRadius: 24,
+    padding: 20,
+    boxShadow: '0 18px 35px rgba(2,6,23,0.20)',
+    color: '#f8fafc',
+  },
+  chartItem: {
+    marginBottom: 18,
+  },
+  chartTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    color: '#fef3c7',
+  },
+  progressTrack: {
+    width: '100%',
+    height: 12,
+    background: 'rgba(255,255,255,0.13)',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    background: 'linear-gradient(90deg,#22c55e,#38bdf8)',
+    borderRadius: 999,
+  },
+  progressFillGold: {
+    height: '100%',
+    background: 'linear-gradient(90deg,#f59e0b,#facc15)',
+    borderRadius: 999,
+  },
+  alertRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 10,
+  },
+  alertGood: {
+    background: 'rgba(34,197,94,0.16)',
+    border: '1px solid rgba(34,197,94,0.35)',
+  },
+  alertWarn: {
+    background: 'rgba(250,204,21,0.16)',
+    border: '1px solid rgba(250,204,21,0.35)',
+  },
+  alertDanger: {
+    background: 'rgba(239,68,68,0.18)',
+    border: '1px solid rgba(239,68,68,0.35)',
+  },
+  alertText: {
+    margin: '4px 0 0',
+    color: '#cbd5e1',
+    fontSize: 13,
+  },
+  alertValue: {
+    fontWeight: 900,
+    fontSize: 20,
+    color: '#facc15',
+  },
+  miniTitle: {
+    margin: '8px 0 12px',
+    color: '#92400e',
+    fontSize: 16,
+  },
+  roomGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))',
+    gap: 10,
+    marginBottom: 16,
+  },
+  roomTile: {
+    border: '1px solid #fde68a',
+    background: 'linear-gradient(135deg,#fffbeb,#fff7ed)',
+    borderRadius: 16,
+    padding: 12,
+    cursor: 'pointer',
+    textAlign: 'left',
+    color: '#78350f',
+    boxShadow: '0 8px 18px rgba(146,64,14,0.08)',
+  },
+  bedDots: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 5,
+    margin: '10px 0',
+  },
+  bedDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    display: 'inline-block',
+  },
+  bedOccupied: {
+    background: '#ef4444',
+  },
+  bedVacant: {
+    background: '#22c55e',
+  },
+
   logoutBtn: {
     padding: '12px 16px',
     borderRadius: 14,
@@ -1638,28 +1927,44 @@ const styles: any = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg,#2563eb,#7c3aed,#f97316)',
+    backgroundImage:
+      'linear-gradient(rgba(2,6,23,0.10), rgba(2,6,23,0.38)), url("/dwaraka-login-bg.png")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
     padding: 20,
     fontFamily: 'Arial, sans-serif',
+  },
+  loginLogo: {
+    width: 130,
+    height: 130,
+    objectFit: 'cover',
+    borderRadius: 28,
+    display: 'block',
+    margin: '0 auto 14px',
+    border: '2px solid rgba(250,204,21,0.75)',
+    boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
   },
   authCard: {
     width: '100%',
     maxWidth: 420,
-    background: 'white',
+    background: 'rgba(2,6,23,0.58)',
+    color: '#fef3c7',
     padding: 24,
     borderRadius: 24,
-    boxShadow: '0 18px 40px rgba(15,23,42,0.25)',
+    border: '1px solid rgba(250,204,21,0.45)',
+    backdropFilter: 'blur(12px)',
+    boxShadow: '0 18px 40px rgba(0,0,0,0.45)',
   },
   authTitle: {
     marginTop: 8,
     marginBottom: 8,
     fontSize: 28,
-    color: '#0f172a',
+    color: '#facc15',
   },
   authSub: {
     marginTop: 0,
     marginBottom: 20,
-    color: '#64748b',
+    color: '#fef3c7',
   },
   errorText: {
     marginTop: 0,
