@@ -53,7 +53,32 @@ function getIplTheme(index: number) {
 }
 
 function formatCurrency(amount: any) {
-  return `₹${Number(amount || 0)}`;
+  return `₹${Number(amount || 0).toLocaleString('en-IN')}`;
+}
+
+
+function formatDatePretty(value: any) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatDateTimePretty(value: any) {
+  if (!value) return '-';
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function monthToTimestamp(monthLabel: string) {
@@ -67,6 +92,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('rooms');
   const [openTenantId, setOpenTenantId] = useState('');
   const [openDeletedTenantId, setOpenDeletedTenantId] = useState('');
+  const [selectedTenantProfile, setSelectedTenantProfile] = useState<any>(null);
 
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
@@ -85,7 +111,11 @@ export default function App() {
   const [selectedFeeTenant, setSelectedFeeTenant] = useState('');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [showVacantOnly, setShowVacantOnly] = useState(false);
+  const [showRoomNumbers, setShowRoomNumbers] = useState(false);
   const [tenantSearch, setTenantSearch] = useState('');
+  const [tenantStatusFilter, setTenantStatusFilter] = useState('All');
+  const [feeStatusFilter, setFeeStatusFilter] = useState('All');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
   const [roomSearch, setRoomSearch] = useState('');
   const [feeSearch, setFeeSearch] = useState('');
   const [complaintSearch, setComplaintSearch] = useState('');
@@ -247,12 +277,17 @@ export default function App() {
     setSelectedFeeTenant('');
     setShowUnpaidOnly(false);
     setShowVacantOnly(false);
+    setShowRoomNumbers(false);
     setTenantSearch('');
+    setTenantStatusFilter('All');
+    setFeeStatusFilter('All');
+    setComplaintStatusFilter('All');
     setRoomSearch('');
     setFeeSearch('');
     setComplaintSearch('');
     setOpenTenantId('');
     setOpenDeletedTenantId('');
+    setSelectedTenantProfile(null);
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
@@ -302,6 +337,10 @@ export default function App() {
       list = list.filter((item) => item.roomNo === selectedRoom);
     }
 
+    if (tenantStatusFilter !== 'All') {
+      list = list.filter((item) => (item.status || 'Active') === tenantStatusFilter);
+    }
+
     if (tenantSearch.trim()) {
       const q = tenantSearch.toLowerCase();
       list = list.filter((item) =>
@@ -312,7 +351,7 @@ export default function App() {
     }
 
     return list;
-  }, [currentTenants, selectedRoom, tenantSearch]);
+  }, [currentTenants, selectedRoom, tenantSearch, tenantStatusFilter]);
 
   const tenantNames = useMemo(
     () => currentTenants.map((item) => item.name).filter(Boolean),
@@ -330,6 +369,10 @@ export default function App() {
       );
     }
 
+    if (feeStatusFilter !== 'All') {
+      base = base.filter((f) => f.status === feeStatusFilter);
+    }
+
     if (feeSearch.trim()) {
       const q = feeSearch.toLowerCase();
       base = base.filter((f) =>
@@ -340,10 +383,15 @@ export default function App() {
     return [...base].sort(
       (a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
     );
-  }, [currentFees, selectedFeeTenant, showUnpaidOnly, feeSearch]);
+  }, [currentFees, selectedFeeTenant, showUnpaidOnly, feeSearch, feeStatusFilter]);
 
   const displayedComplaints = useMemo(() => {
     let list = currentComplaints;
+
+    if (complaintStatusFilter !== 'All') {
+      list = list.filter((c) => c.status === complaintStatusFilter);
+    }
+
     if (complaintSearch.trim()) {
       const q = complaintSearch.toLowerCase();
       list = list.filter((c) =>
@@ -353,7 +401,7 @@ export default function App() {
       );
     }
     return list;
-  }, [currentComplaints, complaintSearch]);
+  }, [currentComplaints, complaintSearch, complaintStatusFilter]);
 
   const monthlyCollectedSummary = useMemo(() => {
     const monthTotals: any = {};
@@ -771,6 +819,50 @@ export default function App() {
   };
 
 
+
+  const activityFeed = useMemo(() => {
+    const items = [
+      ...currentTenants.slice(0, 5).map((t) => ({
+        type: 'Tenant Added',
+        title: t.name || 'Tenant',
+        sub: `Room ${t.roomNo || '-'}`,
+        time: Number(t.createdAt || 0),
+      })),
+      ...currentFees.slice(0, 5).map((f) => ({
+        type: 'Fee Updated',
+        title: f.tenantName || 'Tenant',
+        sub: `${f.month || '-'} • ${formatCurrency(f.paidAmount || 0)} paid`,
+        time: Number(f.createdAt || 0),
+      })),
+      ...currentDeletedTenants.slice(0, 5).map((t) => ({
+        type: 'Tenant Deleted',
+        title: t.name || 'Tenant',
+        sub: `Room ${t.roomNo || '-'}`,
+        time: Number(t.deletedAt || 0),
+      })),
+      ...currentComplaints.slice(0, 5).map((c) => ({
+        type: 'Complaint',
+        title: c.tenantName || 'Tenant',
+        sub: `${c.type || '-'} • ${c.status || '-'}`,
+        time: Number(c.createdAt || 0),
+      })),
+    ];
+
+    return items
+      .filter((i) => i.time)
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 8);
+  }, [currentTenants, currentFees, currentDeletedTenants, currentComplaints]);
+
+  const monthlyChartData = useMemo(() => {
+    const rows = monthlyCollectedSummary.slice(0, 6).reverse();
+    const max = Math.max(...rows.map((r: any) => Number(r.total || 0)), 1);
+    return rows.map((r: any) => ({
+      ...r,
+      percent: Math.max(6, Math.round((Number(r.total || 0) / max) * 100)),
+    }));
+  }, [monthlyCollectedSummary]);
+
   const dashboardCards = [
     { title: 'Total Rooms', value: stats.totalRooms, sub: `Beds: ${stats.totalBeds}`, teamIndex: 0, onClick: () => setActiveTab('rooms') },
     { title: 'Occupied Beds', value: stats.occupiedBeds, sub: `Vacant: ${stats.vacantBeds}`, teamIndex: 1 },
@@ -904,17 +996,17 @@ export default function App() {
       <div style={styles.container}>
         <div style={styles.hero}>
           <span style={styles.heroWatermark}>DWARAKA</span>
-          <div style={{ position: 'relative', zIndex: 2, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={styles.heroBrand}>
             <img src="/dwaraka-logo.png" alt="Dwaraka Premium Stays" style={styles.dashboardLogo} />
-            <div>
-              <p style={styles.small}>DWARAKA STAYS</p>
-            <h1 style={styles.title}>
-              <span style={styles.ogTitle}>DWARAKA</span>
-              <span style={styles.titleSmall}> Engineers PG • Royal Hostel Management</span>
-            </h1>
-            <p style={styles.subtitle}>
-              Manage rooms, tenants, payments, complaints and deleted tenant history.
-            </p>
+            <div style={styles.heroTextBlock}>
+              <p style={styles.small}>DWARAKA PREMIUM STAYS</p>
+              <h1 style={styles.title}>
+                <span style={styles.ogTitle}>DWARAKA</span>
+                <span style={styles.titleSmall}>Royal Hostel Management</span>
+              </h1>
+              <p style={styles.subtitle}>
+                Engineers PG • Premium tenant, room, fee and history management.
+              </p>
             </div>
           </div>
 
@@ -989,7 +1081,7 @@ export default function App() {
 
         <div style={styles.insightGrid}>
           <div style={styles.premiumPanel}>
-            <h2 style={styles.cardTitle}>Royal Dashboard Insights</h2>
+            <h2 style={styles.royalPanelTitle}>Royal Dashboard Insights</h2>
             <div style={styles.chartItem}>
               <div style={styles.chartTop}>
                 <span>Occupancy</span>
@@ -998,7 +1090,7 @@ export default function App() {
               <div style={styles.progressTrack}>
                 <div style={{ ...styles.progressFill, width: `${occupancyPercent}%` }} />
               </div>
-              <p style={styles.rowSub}>{stats.occupiedBeds} occupied out of {stats.totalBeds} beds</p>
+              <p style={styles.panelSub}>{stats.occupiedBeds} occupied out of {stats.totalBeds} beds</p>
             </div>
 
             <div style={styles.chartItem}>
@@ -1009,12 +1101,27 @@ export default function App() {
               <div style={styles.progressTrack}>
                 <div style={{ ...styles.progressFillGold, width: `${feeCollectionPercent}%` }} />
               </div>
-              <p style={styles.rowSub}>{formatCurrency(currentMonthCollected)} collected this month</p>
+              <p style={styles.panelSub}>{formatCurrency(currentMonthCollected)} collected this month</p>
             </div>
+
+            <h3 style={styles.miniGoldTitle}>Monthly Collection Chart</h3>
+            {monthlyChartData.length === 0 ? (
+              <p style={styles.panelSub}>No chart data yet</p>
+            ) : (
+              monthlyChartData.map((item: any) => (
+                <div key={item.month} style={styles.barRow}>
+                  <span style={styles.barLabel}>{item.month}</span>
+                  <div style={styles.barTrack}>
+                    <div style={{ ...styles.barFill, width: `${item.percent}%` }} />
+                  </div>
+                  <strong>{formatCurrency(item.total)}</strong>
+                </div>
+              ))
+            )}
           </div>
 
           <div style={styles.premiumPanel}>
-            <h2 style={styles.cardTitle}>Smart Alerts</h2>
+            <h2 style={styles.royalPanelTitle}>Smart Alerts</h2>
             {alertCards.map((alert) => (
               <div
                 key={alert.title}
@@ -1033,8 +1140,7 @@ export default function App() {
                 </div>
                 <span style={styles.alertValue}>{alert.value}</span>
               </div>
-            ))}
-          </div>
+            ))}          </div>
         </div>
 
         <div style={styles.tabs}>
@@ -1044,6 +1150,7 @@ export default function App() {
             ['fees', 'Monthly Fees'],
             ['complaints', 'Complaints'],
             ['history', 'Deleted History'],
+            ['activity', 'Activity Timeline'],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -1060,7 +1167,7 @@ export default function App() {
 
         {activeTab === 'rooms' && (
           <div style={styles.grid2}>
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalFormCard }}>
               <h2 style={styles.cardTitle}>Add Room - {selectedHostel}</h2>
               <input style={styles.input} placeholder="Room Number" value={roomForm.roomNo} onChange={(e) => setRoomForm({ ...roomForm, roomNo: e.target.value })} />
               <input style={styles.input} placeholder="Block / Floor" value={roomForm.block} onChange={(e) => setRoomForm({ ...roomForm, block: e.target.value })} />
@@ -1076,7 +1183,7 @@ export default function App() {
               <button style={styles.primaryBtn} onClick={addRoom}>Add Room</button>
             </div>
 
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalListCard }}>
               <h2 style={styles.cardTitle}>Room Availability</h2>
               <input
                 style={styles.input}
@@ -1085,38 +1192,55 @@ export default function App() {
                 onChange={(e) => setRoomSearch(e.target.value)}
               />
 
-              <h3 style={styles.miniTitle}>Room Visual Layout</h3>
-              <div style={styles.roomGrid}>
-                {searchedRooms.map((room) => {
-                  const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
-                  const totalBeds = Number(room.totalBeds || 0);
-                  return (
-                    <button
-                      key={`visual-${room.id}`}
-                      style={styles.roomTile}
-                      onClick={() => openRoomTenants(room.roomNo)}
-                    >
-                      <strong>Room {room.roomNo}</strong>
-                      <div style={styles.bedDots}>
-                        {Array.from({ length: totalBeds }).map((_, index) => (
-                          <span
-                            key={index}
-                            style={{
-                              ...styles.bedDot,
-                              ...(index < occupied ? styles.bedOccupied : styles.bedVacant),
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <small>{occupied}/{totalBeds} filled</small>
-                    </button>
-                  );
-                })}
-              </div>
+              <button
+                style={styles.viewRoomsBtn}
+                onClick={() => setShowRoomNumbers(!showRoomNumbers)}
+              >
+                {showRoomNumbers ? 'Hide Room Numbers' : 'View Room Numbers'}
+              </button>
 
-              {searchedRooms.length === 0 ? (
+              {!showRoomNumbers && (
+                <div style={styles.hiddenRoomNotice}>
+                  Room numbers are hidden. Click <b>View Room Numbers</b> to see all rooms.
+                </div>
+              )}
+
+              {showRoomNumbers && (
+                <>
+                  <h3 style={styles.miniTitle}>Room Visual Layout</h3>
+                  <div style={styles.roomGrid}>
+                    {searchedRooms.map((room) => {
+                      const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
+                      const totalBeds = Number(room.totalBeds || 0);
+                      return (
+                        <button
+                          key={`visual-${room.id}`}
+                          style={styles.roomTile}
+                          onClick={() => openRoomTenants(room.roomNo)}
+                        >
+                          <strong>Room {room.roomNo}</strong>
+                          <div style={styles.bedDots}>
+                            {Array.from({ length: totalBeds }).map((_, index) => (
+                              <span
+                                key={index}
+                                style={{
+                                  ...styles.bedDot,
+                                  ...(index < occupied ? styles.bedOccupied : styles.bedVacant),
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <small>{occupied}/{totalBeds} filled</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {showRoomNumbers && searchedRooms.length === 0 ? (
                 <p style={styles.empty}>No rooms yet</p>
-              ) : (
+              ) : showRoomNumbers ? (
                 searchedRooms.map((room) => {
                   const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
                   const available = Math.max(0, Number(room.totalBeds || 0) - occupied);
@@ -1125,7 +1249,7 @@ export default function App() {
                     <div key={room.id} style={styles.row}>
                       <div>
                         <button style={styles.linkBtn} onClick={() => openRoomTenants(room.roomNo)}>
-                          Room {room.roomNo}
+                          {showRoomNumbers ? `Room ${room.roomNo}` : 'Room Hidden'}
                         </button>
                         <p style={styles.rowSub}>
                           Block: {room.block || '-'} | Type: {room.roomType || '-'}
@@ -1143,14 +1267,14 @@ export default function App() {
                     </div>
                   );
                 })
-              )}
+              ) : null}
             </div>
           </div>
         )}
 
         {activeTab === 'tenants' && (
           <div style={styles.grid2}>
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalFormCard }}>
               <h2 style={styles.cardTitle}>
                 {selectedRoom ? `Add Tenant for Room ${selectedRoom}` : 'Add Tenant'}
               </h2>
@@ -1175,7 +1299,7 @@ export default function App() {
               <button style={styles.primaryBtn} onClick={addTenant}>Save Tenant</button>
             </div>
 
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalListCard }}>
               <h2 style={styles.cardTitle}>Tenant List</h2>
               <input
                 style={styles.input}
@@ -1183,6 +1307,17 @@ export default function App() {
                 value={tenantSearch}
                 onChange={(e) => setTenantSearch(e.target.value)}
               />
+
+              <select
+                aria-label="Tenant Status Filter"
+                style={styles.select}
+                value={tenantStatusFilter}
+                onChange={(e) => setTenantStatusFilter(e.target.value)}
+              >
+                <option value="All">All Tenants</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
 
               {selectedRoom ? (
                 <button style={styles.smallBtn} onClick={() => setSelectedRoom('')}>
@@ -1194,7 +1329,7 @@ export default function App() {
                 <p style={styles.empty}>No tenants yet</p>
               ) : (
                 filteredTenants.map((tenant) => (
-                  <div key={tenant.id} style={styles.row}>
+                  <div key={tenant.id} style={styles.tenantPremiumRow}>
                     <div style={{ flex: 1 }}>
                       <button style={styles.linkBtn} onClick={() => openTenantFees(tenant.name)}>
                         {tenant.name}
@@ -1203,27 +1338,42 @@ export default function App() {
                         {tenant.phone || 'No phone'} | Room {tenant.roomNo}
                       </p>
 
-                      {openTenantId === tenant.id && (
-                        <div style={{ marginTop: 10 }}>
-                          <p style={styles.rowSub}>Bed No: {tenant.bedNo || '-'}</p>
-                          <p style={styles.rowSub}>Parent Phone: {tenant.parentPhone || '-'}</p>
-                          <p style={styles.rowSub}>Joining Date: {tenant.joiningDate || '-'}</p>
-                          <p style={styles.rowSub}>Status: {tenant.status || 'Active'}</p>
-                          <p style={styles.rowSub}>Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)}</p>
-                          <p style={styles.rowSub}>Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}</p>
-                          <p style={styles.rowSub}>Aadhaar No: {tenant.aadhaarNo || '-'}</p>
-                          <p style={styles.rowSub}>Address: {tenant.address || '-'}</p>
-                          <p style={styles.rowSub}>Notes: {tenant.notes || '-'}</p>
+                      {selectedTenantProfile?.id === tenant.id && (
+                        <div style={styles.inlineProfileCard}>
+                          <div style={styles.inlineProfileHeader}>
+                            <div style={styles.avatarCircleSmall}>
+                              {String(tenant.name || 'T').slice(0, 1).toUpperCase()}
+                            </div>
+                            <div>
+                              <strong>{tenant.name}</strong>
+                              <p style={styles.rowSub}>Room {tenant.roomNo || '-'} • Bed {tenant.bedNo || '-'}</p>
+                            </div>
+                          </div>
+
+                          <div style={styles.inlineProfileGrid}>
+                            <ProfileLine label="Phone" value={tenant.phone || '-'} />
+                            <ProfileLine label="Parent Phone" value={tenant.parentPhone || '-'} />
+                            <ProfileLine label="Joining Date" value={formatDatePretty(tenant.joiningDate)} />
+                            <ProfileLine label="Status" value={tenant.status || 'Active'} />
+                            <ProfileLine label="Monthly Fee" value={formatCurrency(tenant.monthlyFee || 0)} />
+                            <ProfileLine label="Security Deposit" value={formatCurrency(tenant.securityDeposit || 0)} />
+                            <ProfileLine label="Aadhaar No" value={tenant.aadhaarNo || '-'} />
+                            <ProfileLine label="Address" value={tenant.address || '-'} />
+                          </div>
                         </div>
                       )}
                     </div>
 
                     <div style={styles.rowActions}>
                       <button
-                        style={styles.smallBtn}
-                        onClick={() => setOpenTenantId(openTenantId === tenant.id ? '' : tenant.id)}
+                        style={styles.profileBtn}
+                        onClick={() =>
+                          setSelectedTenantProfile(
+                            selectedTenantProfile?.id === tenant.id ? null : tenant
+                          )
+                        }
                       >
-                        {openTenantId === tenant.id ? 'Hide Details' : 'Details'}
+                        {selectedTenantProfile?.id === tenant.id ? 'Hide Profile' : 'View Profile'}
                       </button>
 
                       <button
@@ -1239,6 +1389,31 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {activeTab === 'activity' && (
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Activity Timeline</h2>
+            <p style={styles.empty}>All recent tenant, fee, complaint and deleted-history activities.</p>
+
+            {activityFeed.length === 0 ? (
+              <p style={styles.empty}>No activity yet</p>
+            ) : (
+              <div style={styles.activityBox}>
+                {activityFeed.map((item, index) => (
+                  <div key={`${item.type}-${item.time}-${index}`} style={styles.activityItem}>
+                    <span style={styles.timelineDot} />
+                    <div>
+                      <strong>{item.type}</strong>
+                      <p style={styles.activitySub}>{item.title} • {item.sub}</p>
+                      <small style={styles.timelineTime}>{formatDateTimePretty(item.time)}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'history' && (
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Deleted Tenant History</h2>
@@ -1301,7 +1476,7 @@ export default function App() {
 
         {activeTab === 'fees' && (
           <div style={styles.grid2}>
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalFormCard }}>
               <h2 style={styles.cardTitle}>Add Monthly Fee</h2>
               <select
                 style={styles.select}
@@ -1352,7 +1527,7 @@ export default function App() {
               <button style={styles.primaryBtn} onClick={addFee}>Add Fee Record</button>
             </div>
 
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalListCard }}>
               <h2 style={styles.cardTitle}>Fee Records</h2>
               <input
                 style={styles.input}
@@ -1360,6 +1535,18 @@ export default function App() {
                 value={feeSearch}
                 onChange={(e) => setFeeSearch(e.target.value)}
               />
+
+              <select
+                aria-label="Fee Status Filter"
+                style={styles.select}
+                value={feeStatusFilter}
+                onChange={(e) => setFeeStatusFilter(e.target.value)}
+              >
+                <option value="All">All Fees</option>
+                <option value="Paid">Paid</option>
+                <option value="Partial">Partial</option>
+                <option value="Unpaid">Unpaid</option>
+              </select>
 
               {displayedFeeRecords.length === 0 ? (
                 <p style={styles.empty}>No fee records</p>
@@ -1401,7 +1588,7 @@ export default function App() {
 
         {activeTab === 'complaints' && (
           <div style={styles.grid2}>
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalFormCard }}>
               <h2 style={styles.cardTitle}>Complaint Box</h2>
               <select
                 style={styles.select}
@@ -1441,7 +1628,7 @@ export default function App() {
               <button style={styles.primaryBtn} onClick={addComplaint}>Add Complaint</button>
             </div>
 
-            <div style={styles.card}>
+            <div style={{ ...styles.card, ...styles.royalListCard }}>
               <h2 style={styles.cardTitle}>Complaint Tracker</h2>
               <input
                 style={styles.input}
@@ -1449,6 +1636,17 @@ export default function App() {
                 value={complaintSearch}
                 onChange={(e) => setComplaintSearch(e.target.value)}
               />
+
+              <select
+                aria-label="Complaint Status Filter"
+                style={styles.select}
+                value={complaintStatusFilter}
+                onChange={(e) => setComplaintStatusFilter(e.target.value)}
+              >
+                <option value="All">All Complaints</option>
+                <option value="Pending">Pending</option>
+                <option value="Resolved">Resolved</option>
+              </select>
 
               {displayedComplaints.length === 0 ? (
                 <p style={styles.empty}>No complaints yet</p>
@@ -1485,6 +1683,15 @@ export default function App() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProfileLine({ label, value }) {
+  return (
+    <div style={styles.profileLine}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -1526,7 +1733,7 @@ const styles: any = {
     position: 'relative',
     overflow: 'hidden',
     background:
-      'radial-gradient(circle at top left, rgba(250,204,21,0.55), transparent 30%), linear-gradient(135deg, #020617 0%, #7f1d1d 45%, #111827 100%)',
+      'radial-gradient(circle at 12% 20%, rgba(250,204,21,0.38), transparent 22%), radial-gradient(circle at 88% 18%, rgba(239,68,68,0.28), transparent 25%), linear-gradient(135deg, #020617 0%, #450a0a 42%, #111827 100%)',
     borderRadius: 28,
     padding: 28,
     color: 'white',
@@ -1537,6 +1744,48 @@ const styles: any = {
     marginBottom: 20,
     boxShadow: '0 18px 40px rgba(37,99,235,0.25)',
   },
+
+  heroBrand: {
+    position: 'relative',
+    zIndex: 2,
+    display: 'flex',
+    gap: 26,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    width: '100%',
+    maxWidth: 760,
+  },
+  heroTextBlock: {
+    flex: 1,
+    minWidth: 260,
+  },
+  royalFormCard: {
+    background:
+      'linear-gradient(135deg, rgba(15,23,42,0.98), rgba(68,64,60,0.96))',
+    border: '1px solid rgba(250,204,21,0.40)',
+    color: '#fef3c7',
+    boxShadow: '0 18px 40px rgba(0,0,0,0.25)',
+  },
+  royalListCard: {
+    background:
+      'linear-gradient(135deg, rgba(255,251,235,0.98), rgba(255,247,237,0.96))',
+    border: '1px solid rgba(217,119,6,0.28)',
+    boxShadow: '0 18px 36px rgba(146,64,14,0.15)',
+  },
+  tenantPremiumRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 20,
+    border: '1px solid rgba(217,119,6,0.22)',
+    background:
+      'linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,247,237,0.96))',
+    boxShadow: '0 10px 24px rgba(146,64,14,0.10)',
+  },
+
   heroRight: {
     display: 'flex',
     gap: 12,
@@ -1544,12 +1793,12 @@ const styles: any = {
     flexWrap: 'wrap',
   },
   dashboardLogo: {
-    width: 92,
-    height: 92,
+    width: 140,
+    height: 140,
     objectFit: 'cover',
-    borderRadius: 24,
-    border: '2px solid rgba(250,204,21,0.75)',
-    boxShadow: '0 12px 26px rgba(0,0,0,0.35)',
+    borderRadius: 30,
+    border: '3px solid rgba(250,204,21,0.90)',
+    boxShadow: '0 18px 40px rgba(0,0,0,0.50), 0 0 28px rgba(250,204,21,0.30)',
     background: '#020617',
   },
   small: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#e0f2fe' },
@@ -1559,10 +1808,10 @@ const styles: any = {
   ogTitle: {
     display: 'inline-block',
     fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
-    fontSize: 52,
+    fontSize: 64,
     letterSpacing: 4,
     color: '#facc15',
-    textShadow: '3px 3px 0 #991b1b, 6px 6px 0 rgba(0,0,0,0.45)',
+    textShadow: '3px 3px 0 #991b1b, 6px 6px 0 rgba(0,0,0,0.55), 0 0 24px rgba(250,204,21,0.35)',
     transform: 'skew(-6deg)',
   },
   titleSmall: {
@@ -1674,7 +1923,7 @@ const styles: any = {
   },
   grid2: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
     gap: 16,
     marginBottom: 20,
   },
@@ -1732,7 +1981,7 @@ const styles: any = {
   },
   insightGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
     gap: 16,
     marginBottom: 20,
   },
@@ -1812,6 +2061,28 @@ const styles: any = {
     gap: 10,
     marginBottom: 16,
   },
+  viewRoomsBtn: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 14,
+    border: 'none',
+    background: 'linear-gradient(135deg,#facc15,#f97316)',
+    color: '#422006',
+    fontWeight: 900,
+    cursor: 'pointer',
+    marginBottom: 16,
+    boxShadow: '0 10px 22px rgba(249,115,22,0.22)',
+  },
+  hiddenRoomNotice: {
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+    color: '#92400e',
+    padding: 14,
+    borderRadius: 16,
+    textAlign: 'center',
+    fontWeight: 600,
+    marginBottom: 16,
+  },
   roomTile: {
     border: '1px solid #fde68a',
     background: 'linear-gradient(135deg,#fffbeb,#fff7ed)',
@@ -1860,6 +2131,15 @@ const styles: any = {
     fontWeight: 800,
     cursor: 'pointer',
     height: 46,
+  },
+  profileBtn: {
+    border: 'none',
+    background: 'linear-gradient(135deg,#facc15,#f97316)',
+    color: '#422006',
+    padding: '8px 12px',
+    borderRadius: 10,
+    cursor: 'pointer',
+    fontWeight: 800,
   },
   dangerBtn: {
     border: 'none',
