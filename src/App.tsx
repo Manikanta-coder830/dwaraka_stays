@@ -87,7 +87,7 @@ function monthToTimestamp(monthLabel: string) {
 }
 
 export default function App() {
-  const [selectedHostel, setSelectedHostel] = useState('');
+  const [selectedHostel, setSelectedHostel] = useState('Dwaraka 1');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
   const [openTenantId, setOpenTenantId] = useState('');
@@ -95,6 +95,7 @@ export default function App() {
   const [selectedTenantProfile, setSelectedTenantProfile] = useState<any>(null);
 
   const [user, setUser] = useState(null);
+  const [isAdminMode, setIsAdminMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -171,17 +172,27 @@ export default function App() {
     resolvedDate: '',
   });
 
+
+  useEffect(() => {
+    if (!isAdminMode && ['fees', 'history', 'activity'].includes(activeTab)) {
+      setActiveTab('rooms');
+    }
+  }, [isAdminMode, activeTab]);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       setAuthLoading(false);
 
       if (!u?.email) {
+        setIsAdminMode(false);
         setOwnerHostels([]);
-        setSelectedHostel('');
+        setSelectedHostel('Dwaraka 1');
         setOwnerError('');
         return;
       }
+
+      setIsAdminMode(true);
 
       setOwnerLoading(true);
       setOwnerError('');
@@ -229,7 +240,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user || !selectedHostel) {
+    if (!selectedHostel) {
       setRooms([]);
       setTenants([]);
       setDeletedTenants([]);
@@ -270,7 +281,7 @@ export default function App() {
       unsubFees();
       unsubComplaints();
     };
-  }, [user, selectedHostel]);
+  }, [selectedHostel]);
 
   useEffect(() => {
     setSelectedRoom('');
@@ -291,27 +302,27 @@ export default function App() {
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
-    () => rooms.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
+    () => rooms.filter((item) => item.hostel === selectedHostel),
     [rooms, selectedHostel, ownerHostels]
   );
 
   const currentTenants = useMemo(
-    () => tenants.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
+    () => tenants.filter((item) => item.hostel === selectedHostel),
     [tenants, selectedHostel, ownerHostels]
   );
 
   const currentDeletedTenants = useMemo(
-    () => deletedTenants.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
+    () => deletedTenants.filter((item) => item.hostel === selectedHostel),
     [deletedTenants, selectedHostel, ownerHostels]
   );
 
   const currentFees = useMemo(
-    () => fees.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
+    () => fees.filter((item) => item.hostel === selectedHostel),
     [fees, selectedHostel, ownerHostels]
   );
 
   const currentComplaints = useMemo(
-    () => complaints.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
+    () => complaints.filter((item) => item.hostel === selectedHostel),
     [complaints, selectedHostel, ownerHostels]
   );
 
@@ -485,11 +496,14 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    setIsAdminMode(false);
     setOwnerHostels([]);
-    setSelectedHostel('');
+    setSelectedHostel('Dwaraka 1');
+    setActiveTab('rooms');
   };
 
   const addRoom = async () => {
+    if (!isAdminMode) return alert('Please login as admin to add rooms');
     if (!roomForm.roomNo || !roomForm.totalBeds) {
       alert('Enter room number and total beds');
       return;
@@ -532,6 +546,7 @@ export default function App() {
   };
 
   const addTenant = async () => {
+    if (!isAdminMode) return alert('Please login as admin to add tenants');
     if (!tenantForm.name || !tenantForm.roomNo || !tenantForm.bedNo) {
       alert('Fill tenant name, room number and bed number');
       return;
@@ -608,6 +623,7 @@ export default function App() {
   };
 
   const addFee = async () => {
+    if (!isAdminMode) return alert('Please login as admin to add fees');
     if (!feeForm.tenantName || !feeForm.month || !feeForm.amount) {
       alert('Select tenant, month and amount');
       return;
@@ -694,6 +710,7 @@ export default function App() {
   };
 
   const toggleFeeStatus = async (id: string, currentStatus: string, currentAmount: any) => {
+    if (!isAdminMode) return alert('Please login as admin');
     let newStatus = 'Paid';
     let paidAmount = Number(currentAmount || 0);
     let dueAmount = 0;
@@ -715,6 +732,7 @@ export default function App() {
   };
 
   const toggleComplaintStatus = async (id: string, currentStatus: string) => {
+    if (!isAdminMode) return alert('Please login as admin');
     const newStatus = currentStatus === 'Resolved' ? 'Pending' : 'Resolved';
 
     await updateDoc(doc(db, 'complaints', id), {
@@ -724,6 +742,7 @@ export default function App() {
   };
 
   const deleteItem = async (collectionName: string, id: string) => {
+    if (!isAdminMode) return alert('Please login as admin to delete');
     const ok = window.confirm('Are you sure you want to delete this record?');
     if (!ok) return;
     await deleteDoc(doc(db, collectionName, id));
@@ -731,6 +750,7 @@ export default function App() {
   };
 
   const deleteHistoryRecord = async (id: string) => {
+    if (!isAdminMode) return alert('Please login as admin to delete history');
     const ok = window.confirm('Delete this history record permanently?');
     if (!ok) return;
 
@@ -744,6 +764,7 @@ export default function App() {
   };
 
   const deleteTenantWithRelatedData = async (tenant: any) => {
+    if (!isAdminMode) return alert('Please login as admin to delete tenants');
     const ok = window.confirm(`Delete ${tenant.name} and save to history?`);
     if (!ok) return;
 
@@ -871,13 +892,17 @@ export default function App() {
       setShowVacantOnly(true);
     } },
     { title: 'Total Tenants', value: stats.totalTenants, sub: 'Active tenants', teamIndex: 3, onClick: () => setActiveTab('tenants') },
-    { title: 'Collected Fee', value: formatCurrency(currentMonthCollected), sub: currentMonthLabel, teamIndex: 4 },
-    { title: 'Pending Fee', value: formatCurrency(currentMonthPending), sub: currentMonthLabel, teamIndex: 5, onClick: () => {
-      setActiveTab('fees');
-      setShowUnpaidOnly(true);
+    { title: 'Collected Fee', value: isAdminMode ? formatCurrency(currentMonthCollected) : 'Admin', sub: isAdminMode ? currentMonthLabel : 'Login required', teamIndex: 4 },
+    { title: 'Pending Fee', value: isAdminMode ? formatCurrency(currentMonthPending) : 'Admin', sub: isAdminMode ? currentMonthLabel : 'Login required', teamIndex: 5, onClick: () => {
+      if (isAdminMode) {
+        setActiveTab('fees');
+        setShowUnpaidOnly(true);
+      } else {
+        setActiveTab('adminLogin');
+      }
     } },
-    { title: 'Security Deposit', value: formatCurrency(totalSecurityDepositCollected), sub: 'Collected', teamIndex: 6 },
-    { title: 'Deleted History', value: currentDeletedTenants.length, sub: 'Old tenants', teamIndex: 7, onClick: () => setActiveTab('history') },
+    { title: 'Security Deposit', value: isAdminMode ? formatCurrency(totalSecurityDepositCollected) : 'Admin', sub: isAdminMode ? 'Collected' : 'Login required', teamIndex: 6 },
+    { title: 'Deleted History', value: isAdminMode ? currentDeletedTenants.length : 'Admin', sub: isAdminMode ? 'Old tenants' : 'Login required', teamIndex: 7, onClick: () => setActiveTab(isAdminMode ? 'history' : 'adminLogin') },
     { title: 'Active Complaints', value: activeComplaints, sub: 'Open', teamIndex: 8, onClick: () => setActiveTab('complaints') },
     { title: 'Resolved Complaints', value: resolvedComplaints, sub: 'Closed', teamIndex: 9, onClick: () => setActiveTab('complaints') },
   ];
@@ -957,40 +982,6 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return (
-      <div style={styles.authPage}>
-        <div style={styles.authCard}>
-          <img src="/dwaraka-logo.png" alt="Dwaraka Premium Stays" style={styles.loginLogo} />
-          <p style={styles.smallDark}>DWARAKA STAYS</p>
-          <h2 style={styles.authTitle}>Owner Login</h2>
-          <p style={styles.authSub}>Only admin can access the dashboard</p>
-
-          <input
-            style={styles.input}
-            type="email"
-            placeholder="Owner Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            style={styles.input}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
-
-          <button style={styles.primaryBtn} onClick={handleLogin}>
-            Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={styles.page}>
       <div style={styles.container}>
@@ -1002,10 +993,10 @@ export default function App() {
               <p style={styles.small}>DWARAKA PREMIUM STAYS</p>
               <h1 style={styles.title}>
                 <span style={styles.ogTitle}>DWARAKA</span>
-                <span style={styles.titleSmall}>Royal Hostel Management</span>
+                <span style={styles.titleSmall}></span>
               </h1>
               <p style={styles.subtitle}>
-                Engineers PG • Premium tenant, room, fee and history management.
+                Engineers PG • Premium Stays
               </p>
             </div>
           </div>
@@ -1018,7 +1009,7 @@ export default function App() {
                 value={selectedHostel}
                 onChange={(e) => setSelectedHostel(e.target.value)}
               >
-                {ownerHostels.map((h) => (
+                {(isAdminMode && ownerHostels.length ? ownerHostels : ['Dwaraka 1', 'Dwaraka 2', 'Dwaraka 3', 'Dwaraka 4']).map((h) => (
                   <option key={h} value={h}>
                     {h}
                   </option>
@@ -1026,21 +1017,29 @@ export default function App() {
               </select>
             </div>
 
-            <button style={styles.historyBtn} onClick={() => setActiveTab('history')}>
-              History
-            </button>
+            {isAdminMode ? (
+              <>
+                <button style={styles.historyBtn} onClick={() => setActiveTab('history')}>
+                  History
+                </button>
 
-            <button style={styles.reportBtn} onClick={downloadTenantCSV}>
-              Download CSV
-            </button>
+                <button style={styles.reportBtn} onClick={downloadTenantCSV}>
+                  Download CSV
+                </button>
 
-            <button style={styles.reportBtn} onClick={printMonthlyReport}>
-              Print Report
-            </button>
+                <button style={styles.reportBtn} onClick={printMonthlyReport}>
+                  Print Report
+                </button>
 
-            <button style={styles.logoutBtn} onClick={handleLogout}>
-              Logout
-            </button>
+                <button style={styles.logoutBtn} onClick={handleLogout}>
+                  Logout
+                </button>
+              </>
+            ) : (
+              <button style={styles.loginTopBtn} onClick={() => setActiveTab('adminLogin')}>
+                Admin Login
+              </button>
+            )}
           </div>
         </div>
 
@@ -1147,10 +1146,9 @@ export default function App() {
           {[
             ['rooms', 'Rooms / Beds'],
             ['tenants', 'Tenant Details'],
-            ['fees', 'Monthly Fees'],
+            ...(isAdminMode ? [['fees', 'Monthly Fees']] : []),
             ['complaints', 'Complaints'],
-            ['history', 'Deleted History'],
-            ['activity', 'Activity Timeline'],
+            ...(isAdminMode ? [['history', 'Deleted History'], ['activity', 'Activity Timeline']] : []),
           ].map(([key, label]) => (
             <button
               key={key}
@@ -1165,8 +1163,44 @@ export default function App() {
           ))}
         </div>
 
+
+        {activeTab === 'adminLogin' && !isAdminMode && (
+          <div style={styles.adminLoginGrid}>
+            <div style={styles.publicRoyalCard}>
+              <img src="/dwaraka-royal-bg.png" alt="Dwaraka Royal" style={styles.publicRoyalImage} />
+            </div>
+
+            <div style={{ ...styles.card, ...styles.royalFormCard }}>
+              <h2 style={styles.cardTitle}>Admin Login</h2>
+              <p style={styles.empty}>Login only required for adding/editing/deleting data.</p>
+
+              <input
+                style={styles.input}
+                type="email"
+                placeholder="Owner Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                style={styles.input}
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+
+              {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
+
+              <button style={styles.primaryBtn} onClick={handleLogin}>
+                Login as Admin
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'rooms' && (
           <div style={styles.grid2}>
+            {isAdminMode ? (
             <div style={{ ...styles.card, ...styles.royalFormCard }}>
               <h2 style={styles.cardTitle}>Add Room - {selectedHostel}</h2>
               <input style={styles.input} placeholder="Room Number" value={roomForm.roomNo} onChange={(e) => setRoomForm({ ...roomForm, roomNo: e.target.value })} />
@@ -1182,6 +1216,18 @@ export default function App() {
               </select>
               <button style={styles.primaryBtn} onClick={addRoom}>Add Room</button>
             </div>
+            ) : (
+              <div style={styles.publicRoyalCard}>
+                <img src="/dwaraka-royal-bg.png" alt="Dwaraka Royal" style={styles.publicRoyalImage} />
+                <div style={styles.publicRoyalOverlay}>
+                  <h2>Public View</h2>
+                  <p>Rooms are visible without login. Admin login is required to add, edit or delete rooms.</p>
+                  <button style={styles.loginTopBtn} onClick={() => setActiveTab('adminLogin')}>
+                    Admin Login
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div style={{ ...styles.card, ...styles.royalListCard }}>
               <h2 style={styles.cardTitle}>Room Availability</h2>
@@ -1260,9 +1306,11 @@ export default function App() {
                       </div>
                       <div style={styles.rowActions}>
                         <span style={styles.badge}>{available} Vacant</span>
-                        <button style={styles.smallBtn} onClick={() => deleteItem('rooms', room.id)}>
-                          Delete
-                        </button>
+                        {isAdminMode && (
+                          <button style={styles.smallBtn} onClick={() => deleteItem('rooms', room.id)}>
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1274,6 +1322,7 @@ export default function App() {
 
         {activeTab === 'tenants' && (
           <div style={styles.grid2}>
+            {isAdminMode ? (
             <div style={{ ...styles.card, ...styles.royalFormCard }}>
               <h2 style={styles.cardTitle}>
                 {selectedRoom ? `Add Tenant for Room ${selectedRoom}` : 'Add Tenant'}
@@ -1298,6 +1347,12 @@ export default function App() {
               </select>
               <button style={styles.primaryBtn} onClick={addTenant}>Save Tenant</button>
             </div>
+            ) : (
+              <div style={{ ...styles.card, ...styles.royalFormCard }}>
+                <h2 style={styles.cardTitle}>Tenant Public View</h2>
+                <p style={styles.empty}>Tenant list can be viewed. Login as admin to add or delete tenants.</p>
+              </div>
+            )}
 
             <div style={{ ...styles.card, ...styles.royalListCard }}>
               <h2 style={styles.cardTitle}>Tenant List</h2>
@@ -1338,7 +1393,7 @@ export default function App() {
                         {tenant.phone || 'No phone'} | Room {tenant.roomNo}
                       </p>
 
-                      {selectedTenantProfile?.id === tenant.id && (
+                      {isAdminMode && selectedTenantProfile?.id === tenant.id && (
                         <div style={styles.inlineProfileCard}>
                           <div style={styles.inlineProfileHeader}>
                             <div style={styles.avatarCircleSmall}>
@@ -1365,6 +1420,7 @@ export default function App() {
                     </div>
 
                     <div style={styles.rowActions}>
+                      {isAdminMode && (
                       <button
                         style={styles.profileBtn}
                         onClick={() =>
@@ -1375,13 +1431,16 @@ export default function App() {
                       >
                         {selectedTenantProfile?.id === tenant.id ? 'Hide Profile' : 'View Profile'}
                       </button>
+                      )}
 
-                      <button
-                        style={styles.dangerBtn}
-                        onClick={() => deleteTenantWithRelatedData(tenant)}
-                      >
-                        Delete
-                      </button>
+                      {isAdminMode && (
+                        <button
+                          style={styles.dangerBtn}
+                          onClick={() => deleteTenantWithRelatedData(tenant)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1390,7 +1449,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'activity' && (
+        {isAdminMode && activeTab === 'activity' && (
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Activity Timeline</h2>
             <p style={styles.empty}>All recent tenant, fee, complaint and deleted-history activities.</p>
@@ -1414,7 +1473,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'history' && (
+        {isAdminMode && activeTab === 'history' && (
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Deleted Tenant History</h2>
 
@@ -1572,12 +1631,16 @@ export default function App() {
                       >
                         {fee.status}
                       </span>
-                      <button style={styles.smallBtn} onClick={() => toggleFeeStatus(fee.id, fee.status, fee.amount)}>
-                        Toggle
-                      </button>
-                      <button style={styles.smallBtn} onClick={() => deleteItem('fees', fee.id)}>
-                        Delete
-                      </button>
+                      {isAdminMode && (
+                        <>
+                          <button style={styles.smallBtn} onClick={() => toggleFeeStatus(fee.id, fee.status, fee.amount)}>
+                            Toggle
+                          </button>
+                          <button style={styles.smallBtn} onClick={() => deleteItem('fees', fee.id)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1669,12 +1732,16 @@ export default function App() {
                       >
                         {item.status}
                       </span>
-                      <button style={styles.smallBtn} onClick={() => toggleComplaintStatus(item.id, item.status)}>
-                        Toggle
-                      </button>
-                      <button style={styles.smallBtn} onClick={() => deleteItem('complaints', item.id)}>
-                        Delete
-                      </button>
+                      {isAdminMode && (
+                        <>
+                          <button style={styles.smallBtn} onClick={() => toggleComplaintStatus(item.id, item.status)}>
+                            Toggle
+                          </button>
+                          <button style={styles.smallBtn} onClick={() => deleteItem('complaints', item.id)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))
@@ -2112,6 +2179,55 @@ const styles: any = {
     background: '#22c55e',
   },
 
+
+  publicRoyalCard: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 26,
+    minHeight: 420,
+    border: '1px solid rgba(250,204,21,0.45)',
+    boxShadow: '0 22px 55px rgba(0,0,0,0.35)',
+    background: '#020617',
+  },
+  publicRoyalImage: {
+    width: '100%',
+    height: '100%',
+    minHeight: 420,
+    objectFit: 'cover',
+    display: 'block',
+  },
+  publicRoyalOverlay: {
+    position: 'absolute',
+    inset: 0,
+    background:
+      'linear-gradient(180deg, rgba(2,6,23,0.10), rgba(2,6,23,0.72))',
+    color: '#fef3c7',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    textAlign: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  adminLoginGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
+    gap: 18,
+    marginBottom: 20,
+  },
+
+  loginTopBtn: {
+    padding: '12px 18px',
+    borderRadius: 14,
+    border: '1px solid rgba(250,204,21,0.75)',
+    background: 'linear-gradient(135deg,#facc15,#f97316)',
+    color: '#422006',
+    fontWeight: 900,
+    cursor: 'pointer',
+    height: 46,
+    boxShadow: '0 10px 22px rgba(249,115,22,0.25)',
+  },
   logoutBtn: {
     padding: '12px 16px',
     borderRadius: 14,
