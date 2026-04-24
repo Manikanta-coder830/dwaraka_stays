@@ -34,6 +34,24 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+
+const iplThemes = [
+  { name: 'CSK', bg: 'linear-gradient(135deg,#fff200,#f59e0b)', fg: '#3b2200' },
+  { name: 'MI', bg: 'linear-gradient(135deg,#004ba0,#00a3e0)', fg: '#ffffff' },
+  { name: 'RR', bg: 'linear-gradient(135deg,#ec4899,#2563eb)', fg: '#ffffff' },
+  { name: 'DC', bg: 'linear-gradient(135deg,#174ea6,#ef4444)', fg: '#ffffff' },
+  { name: 'SRH', bg: 'linear-gradient(135deg,#f97316,#111827)', fg: '#fff7ed' },
+  { name: 'LSG', bg: 'linear-gradient(135deg,#38bdf8,#f97316)', fg: '#082f49' },
+  { name: 'KKR', bg: 'linear-gradient(135deg,#3b0764,#facc15)', fg: '#fff7ed' },
+  { name: 'PBSK', bg: 'linear-gradient(135deg,#dc2626,#f8fafc)', fg: '#ffffff' },
+  { name: 'GT', bg: 'linear-gradient(135deg,#0f172a,#d4af37)', fg: '#f8fafc' },
+  { name: 'RCB', bg: 'linear-gradient(135deg,#ef4444,#000000)', fg: '#ffffff' },
+];
+
+function getIplTheme(index: number) {
+  return iplThemes[index % iplThemes.length];
+}
+
 function formatCurrency(amount: any) {
   return `₹${Number(amount || 0)}`;
 }
@@ -48,6 +66,7 @@ export default function App() {
   const [selectedRoom, setSelectedRoom] = useState('');
   const [activeTab, setActiveTab] = useState('rooms');
   const [openTenantId, setOpenTenantId] = useState('');
+  const [openDeletedTenantId, setOpenDeletedTenantId] = useState('');
 
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
@@ -233,6 +252,7 @@ export default function App() {
     setFeeSearch('');
     setComplaintSearch('');
     setOpenTenantId('');
+    setOpenDeletedTenantId('');
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
@@ -662,6 +682,19 @@ export default function App() {
     alert('Deleted successfully');
   };
 
+  const deleteHistoryRecord = async (id: string) => {
+    const ok = window.confirm('Delete this history record permanently?');
+    if (!ok) return;
+
+    await deleteDoc(doc(db, 'deletedTenants', id));
+
+    if (openDeletedTenantId === id) {
+      setOpenDeletedTenantId('');
+    }
+
+    alert('History record deleted successfully.');
+  };
+
   const deleteTenantWithRelatedData = async (tenant: any) => {
     const ok = window.confirm(`Delete ${tenant.name} and save to history?`);
     if (!ok) return;
@@ -737,6 +770,26 @@ export default function App() {
     setActiveTab('fees');
   };
 
+
+  const dashboardCards = [
+    { title: 'Total Rooms', value: stats.totalRooms, sub: `Beds: ${stats.totalBeds}`, teamIndex: 0, onClick: () => setActiveTab('rooms') },
+    { title: 'Occupied Beds', value: stats.occupiedBeds, sub: `Vacant: ${stats.vacantBeds}`, teamIndex: 1 },
+    { title: 'Vacant Beds', value: stats.vacantBeds, sub: 'Click to view', teamIndex: 2, onClick: () => {
+      setActiveTab('rooms');
+      setShowVacantOnly(true);
+    } },
+    { title: 'Total Tenants', value: stats.totalTenants, sub: 'Active tenants', teamIndex: 3, onClick: () => setActiveTab('tenants') },
+    { title: 'Collected Fee', value: formatCurrency(currentMonthCollected), sub: currentMonthLabel, teamIndex: 4 },
+    { title: 'Pending Fee', value: formatCurrency(currentMonthPending), sub: currentMonthLabel, teamIndex: 5, onClick: () => {
+      setActiveTab('fees');
+      setShowUnpaidOnly(true);
+    } },
+    { title: 'Security Deposit', value: formatCurrency(totalSecurityDepositCollected), sub: 'Collected', teamIndex: 6 },
+    { title: 'Deleted History', value: currentDeletedTenants.length, sub: 'Old tenants', teamIndex: 7, onClick: () => setActiveTab('history') },
+    { title: 'Active Complaints', value: activeComplaints, sub: 'Open', teamIndex: 8, onClick: () => setActiveTab('complaints') },
+    { title: 'Resolved Complaints', value: resolvedComplaints, sub: 'Closed', teamIndex: 9, onClick: () => setActiveTab('complaints') },
+  ];
+
   if (authLoading || ownerLoading) {
     return (
       <div style={styles.authPage}>
@@ -784,15 +837,19 @@ export default function App() {
     <div style={styles.page}>
       <div style={styles.container}>
         <div style={styles.hero}>
-          <div>
+          <span style={styles.heroWatermark}>DWARAKA</span>
+          <div style={{ position: 'relative', zIndex: 2 }}>
             <p style={styles.small}>DWARAKA STAYS</p>
-            <h1 style={styles.title}>Hostel Management Dashboard</h1>
+            <h1 style={styles.title}>
+              <span style={styles.ogTitle}>DWARAKA</span>
+              <span style={styles.titleSmall}> Hostel Management Dashboard</span>
+            </h1>
             <p style={styles.subtitle}>
               Manage rooms, tenants, payments, complaints and deleted tenant history.
             </p>
           </div>
 
-          <div style={styles.heroRight}>
+          <div style={{ ...styles.heroRight, position: 'relative', zIndex: 2 }}>
             <div style={styles.switchBox}>
               <label style={styles.label}>Select Hostel</label>
               <select
@@ -819,22 +876,16 @@ export default function App() {
         </div>
 
         <div style={styles.statsGrid}>
-          <StatCard title="Total Rooms" value={stats.totalRooms} sub={`Beds: ${stats.totalBeds}`} onClick={() => setActiveTab('rooms')} />
-          <StatCard title="Occupied Beds" value={stats.occupiedBeds} sub={`Vacant: ${stats.vacantBeds}`} />
-          <StatCard title="Vacant Beds" value={stats.vacantBeds} sub="Click to view" onClick={() => {
-            setActiveTab('rooms');
-            setShowVacantOnly(true);
-          }} />
-          <StatCard title="Total Tenants" value={stats.totalTenants} sub="Active tenants" onClick={() => setActiveTab('tenants')} />
-          <StatCard title="Collected Fee" value={formatCurrency(currentMonthCollected)} sub={currentMonthLabel} />
-          <StatCard title="Pending Fee" value={formatCurrency(currentMonthPending)} sub={currentMonthLabel} onClick={() => {
-            setActiveTab('fees');
-            setShowUnpaidOnly(true);
-          }} />
-          <StatCard title="Security Deposit" value={formatCurrency(totalSecurityDepositCollected)} sub="Collected" />
-          <StatCard title="Deleted History" value={currentDeletedTenants.length} sub="Old tenants" onClick={() => setActiveTab('history')} />
-          <StatCard title="Active Complaints" value={activeComplaints} sub="Open" onClick={() => setActiveTab('complaints')} />
-          <StatCard title="Resolved Complaints" value={resolvedComplaints} sub="Closed" onClick={() => setActiveTab('complaints')} />
+          {dashboardCards.map((card) => (
+            <StatCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              sub={card.sub}
+              teamIndex={card.teamIndex}
+              onClick={card.onClick}
+            />
+          ))}
         </div>
 
         <div style={styles.collectionBanner}>
@@ -1031,7 +1082,6 @@ export default function App() {
             </div>
           </div>
         )}
-
         {activeTab === 'history' && (
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Deleted Tenant History</h2>
@@ -1041,18 +1091,50 @@ export default function App() {
             ) : (
               currentDeletedTenants.map((tenant) => (
                 <div key={tenant.id} style={styles.historyRow}>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <strong>{tenant.name}</strong>
                     <p style={styles.rowSub}>
-                      Phone: {tenant.phone || '-'} | Room: {tenant.roomNo || '-'} | Bed: {tenant.bedNo || '-'}
+                      {tenant.phone || 'No phone'} | Room {tenant.roomNo || '-'}
                     </p>
-                    <p style={styles.rowSub}>Parent Phone: {tenant.parentPhone || '-'}</p>
-                    <p style={styles.rowSub}>Aadhaar No: {tenant.aadhaarNo || '-'}</p>
-                    <p style={styles.rowSub}>
-                      Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)} | Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}
-                    </p>
-                    <p style={styles.rowSub}>Address: {tenant.address || '-'}</p>
-                    <p style={styles.rowSub}>Deleted On: {tenant.deletedDate || '-'}</p>
+
+                    {openDeletedTenantId === tenant.id && (
+                      <div style={{ marginTop: 10 }}>
+                        <p style={styles.rowSub}>Bed No: {tenant.bedNo || '-'}</p>
+                        <p style={styles.rowSub}>Parent Phone: {tenant.parentPhone || '-'}</p>
+                        <p style={styles.rowSub}>Joining Date: {tenant.joiningDate || '-'}</p>
+                        <p style={styles.rowSub}>Status: {tenant.status || '-'}</p>
+                        <p style={styles.rowSub}>
+                          Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)}
+                        </p>
+                        <p style={styles.rowSub}>
+                          Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}
+                        </p>
+                        <p style={styles.rowSub}>Aadhaar No: {tenant.aadhaarNo || '-'}</p>
+                        <p style={styles.rowSub}>Address: {tenant.address || '-'}</p>
+                        <p style={styles.rowSub}>Notes: {tenant.notes || '-'}</p>
+                        <p style={styles.rowSub}>Deleted On: {tenant.deletedDate || '-'}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={styles.rowActions}>
+                    <button
+                      style={styles.smallBtn}
+                      onClick={() =>
+                        setOpenDeletedTenantId(
+                          openDeletedTenantId === tenant.id ? '' : tenant.id
+                        )
+                      }
+                    >
+                      {openDeletedTenantId === tenant.id ? 'Hide Details' : 'Details'}
+                    </button>
+
+                    <button
+                      style={styles.dangerBtn}
+                      onClick={() => deleteHistoryRecord(tenant.id)}
+                    >
+                      Delete History
+                    </button>
                   </div>
                 </div>
               ))
@@ -1250,15 +1332,25 @@ export default function App() {
   );
 }
 
-function StatCard({ title, value, sub, onClick }) {
+function StatCard({ title, value, sub, onClick, teamIndex = 0 }) {
+  const theme = getIplTheme(teamIndex);
+
   return (
     <div
-      style={{ ...styles.statCard, cursor: onClick ? 'pointer' : 'default' }}
+      style={{
+        ...styles.statCard,
+        background: theme.bg,
+        color: theme.fg,
+        cursor: onClick ? 'pointer' : 'default',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
       onClick={onClick}
     >
-      <p style={styles.statTitle}>{title}</p>
-      <h3 style={styles.statValue}>{value}</h3>
-      <span style={styles.statSub}>{sub}</span>
+      <span style={styles.teamWatermark}>{theme.name}</span>
+      <p style={{ ...styles.statTitle, color: theme.fg }}>{title}</p>
+      <h3 style={{ ...styles.statValue, color: theme.fg }}>{value}</h3>
+      <span style={{ ...styles.statSub, color: theme.fg }}>{sub}</span>
     </div>
   );
 }
@@ -1274,8 +1366,10 @@ const styles: any = {
   },
   container: { maxWidth: 1400, margin: '0 auto' },
   hero: {
+    position: 'relative',
+    overflow: 'hidden',
     background:
-      'linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #f97316 100%)',
+      'radial-gradient(circle at top left, rgba(250,204,21,0.55), transparent 30%), linear-gradient(135deg, #020617 0%, #7f1d1d 45%, #111827 100%)',
     borderRadius: 28,
     padding: 28,
     color: 'white',
@@ -1296,6 +1390,34 @@ const styles: any = {
   smallDark: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#64748b' },
   title: { margin: '10px 0', fontSize: 34 },
   subtitle: { margin: 0, color: '#f8fafc', maxWidth: 650 },
+  ogTitle: {
+    display: 'inline-block',
+    fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
+    fontSize: 52,
+    letterSpacing: 4,
+    color: '#facc15',
+    textShadow: '3px 3px 0 #991b1b, 6px 6px 0 rgba(0,0,0,0.45)',
+    transform: 'skew(-6deg)',
+  },
+  titleSmall: {
+    display: 'block',
+    fontSize: 24,
+    color: '#fff7ed',
+    letterSpacing: 1,
+    marginTop: 8,
+  },
+  heroWatermark: {
+    position: 'absolute',
+    right: 20,
+    bottom: -22,
+    fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
+    fontSize: 110,
+    letterSpacing: 6,
+    color: 'rgba(255,255,255,0.08)',
+    transform: 'skew(-8deg)',
+    pointerEvents: 'none',
+    zIndex: 1,
+  },
   switchBox: {
     minWidth: 240,
     display: 'flex',
@@ -1348,6 +1470,16 @@ const styles: any = {
     padding: 20,
     boxShadow: '0 12px 28px rgba(15,23,42,0.10)',
     border: '1px solid rgba(255,255,255,0.8)',
+  },
+  teamWatermark: {
+    position: 'absolute',
+    right: 10,
+    bottom: -2,
+    fontSize: 46,
+    fontWeight: 900,
+    opacity: 0.22,
+    letterSpacing: 2,
+    pointerEvents: 'none',
   },
   statTitle: { margin: 0, color: '#64748b' },
   statValue: { margin: '10px 0 4px', fontSize: 24 },
