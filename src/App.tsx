@@ -1269,84 +1269,80 @@ export default function App() {
                 onChange={(e) => setRoomSearch(e.target.value)}
               />
 
-              <button
-                style={styles.viewRoomsBtn}
-                onClick={() => setShowRoomNumbers(!showRoomNumbers)}
-              >
-                {showRoomNumbers ? 'Hide Room Numbers' : 'View Room Numbers'}
-              </button>
-
               {!showRoomNumbers && (
-                <div style={styles.hiddenRoomNotice}>
-                  Room numbers are hidden. Click <b>View Room Numbers</b> to see all rooms.
-                </div>
+                <>
+                  <div style={styles.hiddenRoomNotice}>
+                    Room list is hidden to keep this page short and clean.
+                  </div>
+
+                  <button
+                    style={styles.viewRoomsBtn}
+                    onClick={() => setShowRoomNumbers(true)}
+                  >
+                    View Room Numbers
+                  </button>
+                </>
               )}
 
               {showRoomNumbers && (
                 <>
                   <h3 style={styles.miniTitle}>Room Visual Layout</h3>
-                  <div style={styles.roomGrid}>
-                    {searchedRooms.map((room) => {
-                      const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
-                      const totalBeds = Number(room.totalBeds || 0);
-                      return (
-                        <button
-                          key={`visual-${room.id}`}
-                          style={styles.roomTile}
-                          onClick={() => openRoomTenants(room.roomNo)}
-                        >
-                          <strong>Room {room.roomNo}</strong>
-                          <div style={styles.bedDots}>
-                            {Array.from({ length: totalBeds }).map((_, index) => (
-                              <span
-                                key={index}
-                                style={{
-                                  ...styles.bedDot,
-                                  ...(index < occupied ? styles.bedOccupied : styles.bedVacant),
-                                }}
-                              />
-                            ))}
+
+                  {searchedRooms.length === 0 ? (
+                    <p style={styles.empty}>No rooms yet</p>
+                  ) : (
+                    <div style={styles.roomGrid}>
+                      {searchedRooms.map((room) => {
+                        const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
+                        const totalBeds = Number(room.totalBeds || 0);
+                        const available = Math.max(0, totalBeds - occupied);
+
+                        return (
+                          <div key={room.id} style={styles.roomTile}>
+                            <button
+                              style={styles.roomTitleBtn}
+                              onClick={() => openRoomTenants(room.roomNo)}
+                            >
+                              Room {room.roomNo}
+                            </button>
+
+                            <div style={styles.bedDots}>
+                              {Array.from({ length: totalBeds }).map((_, index) => (
+                                <span
+                                  key={index}
+                                  style={{
+                                    ...styles.bedDot,
+                                    ...(index < occupied ? styles.bedOccupied : styles.bedVacant),
+                                  }}
+                                />
+                              ))}
+                            </div>
+
+                            <small>{occupied}/{totalBeds} filled • {available} vacant</small>
+
+                            {isAdminMode && (
+                              <button
+                                style={styles.roomDeleteBtn}
+                                onClick={() => deleteItem('rooms', room.id)}
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
-                          <small>{occupied}/{totalBeds} filled</small>
-                        </button>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <button
+                    style={styles.viewRoomsBtn}
+                    onClick={() => setShowRoomNumbers(false)}
+                  >
+                    Hide Room Numbers
+                  </button>
                 </>
               )}
 
-              {showRoomNumbers && searchedRooms.length === 0 ? (
-                <p style={styles.empty}>No rooms yet</p>
-              ) : showRoomNumbers ? (
-                searchedRooms.map((room) => {
-                  const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
-                  const available = Math.max(0, Number(room.totalBeds || 0) - occupied);
-
-                  return (
-                    <div key={room.id} style={styles.row}>
-                      <div>
-                        <button style={styles.linkBtn} onClick={() => openRoomTenants(room.roomNo)}>
-                          {showRoomNumbers ? `Room ${room.roomNo}` : 'Room Hidden'}
-                        </button>
-                        <p style={styles.rowSub}>
-                          Block: {room.block || '-'} | Type: {room.roomType || '-'}
-                        </p>
-                        <p style={styles.rowSub}>
-                          Beds: {room.totalBeds} | Occupied: {occupied} | Available: {available}
-                        </p>
-                      </div>
-                      <div style={styles.rowActions}>
-                        <span style={styles.badge}>{available} Vacant</span>
-                        {isAdminMode && (
-                          <button style={styles.smallBtn} onClick={() => deleteItem('rooms', room.id)}>
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : null}
             </div>
           </div>
         )}
