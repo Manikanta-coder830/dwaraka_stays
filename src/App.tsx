@@ -96,6 +96,7 @@ export default function App() {
 
   const [user, setUser] = useState(null);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [showIntroVideo, setShowIntroVideo] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -172,6 +173,15 @@ export default function App() {
     resolvedDate: '',
   });
 
+
+
+  useEffect(() => {
+    const introTimer = setTimeout(() => {
+      setShowIntroVideo(false);
+    }, 5000);
+
+    return () => clearTimeout(introTimer);
+  }, []);
 
   useEffect(() => {
     if (!isAdminMode && ['fees', 'history', 'activity'].includes(activeTab)) {
@@ -971,6 +981,27 @@ export default function App() {
   const printMonthlyReport = () => {
     window.print();
   };
+
+
+  if (showIntroVideo) {
+    return (
+      <div style={styles.introSplash}>
+        <video
+          style={styles.introVideo}
+          autoPlay
+          muted
+          playsInline
+          onEnded={() => setShowIntroVideo(false)}
+        >
+          <source src="/intro.mp4" type="video/mp4" />
+        </video>
+
+        <button style={styles.skipIntroBtn} onClick={() => setShowIntroVideo(false)}>
+          Skip
+        </button>
+      </div>
+    );
+  }
 
   if (authLoading || ownerLoading) {
     return (
@@ -1787,6 +1818,36 @@ function StatCard({ title, value, sub, onClick, teamIndex = 0 }) {
 }
 
 const styles: any = {
+
+  introSplash: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 999999,
+    background: '#020617',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  introVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  skipIntroBtn: {
+    position: 'absolute',
+    right: 24,
+    bottom: 24,
+    padding: '10px 18px',
+    borderRadius: 999,
+    border: '1px solid rgba(250,204,21,0.7)',
+    background: 'rgba(2,6,23,0.65)',
+    color: '#fef3c7',
+    fontWeight: 800,
+    cursor: 'pointer',
+    backdropFilter: 'blur(10px)',
+  },
+
   page: {
     minHeight: '100vh',
     background:
@@ -1911,11 +1972,14 @@ const styles: any = {
     width: '100%',
     padding: 12,
     borderRadius: 14,
-    border: '1px solid #cbd5e1',
+    border: '1px solid rgba(250,204,21,0.45)',
     fontSize: 14,
     marginBottom: 12,
     boxSizing: 'border-box',
-    background: 'white',
+    background: '#ffffff',
+    color: '#0f172a',
+    WebkitTextFillColor: '#0f172a',
+    caretColor: '#0f172a',
   },
   tabs: {
     display: 'flex',
@@ -2005,23 +2069,29 @@ const styles: any = {
     width: '100%',
     padding: 12,
     borderRadius: 14,
-    border: '1px solid #cbd5e1',
+    border: '1px solid rgba(250,204,21,0.45)',
     fontSize: 14,
     marginBottom: 12,
     boxSizing: 'border-box',
-    background: '#f8fafc',
+    background: '#ffffff',
+    color: '#0f172a',
+    WebkitTextFillColor: '#0f172a',
+    caretColor: '#0f172a',
   },
   textarea: {
     width: '100%',
     minHeight: 110,
     padding: 12,
     borderRadius: 14,
-    border: '1px solid #cbd5e1',
+    border: '1px solid rgba(250,204,21,0.45)',
     fontSize: 14,
     marginBottom: 12,
     resize: 'vertical',
     boxSizing: 'border-box',
-    background: '#f8fafc',
+    background: '#ffffff',
+    color: '#0f172a',
+    WebkitTextFillColor: '#0f172a',
+    caretColor: '#0f172a',
   },
   primaryBtn: {
     width: '100%',
