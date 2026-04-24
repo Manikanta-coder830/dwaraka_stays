@@ -59,6 +59,7 @@ export default function App() {
 
   const [rooms, setRooms] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
+  const [deletedTenants, setDeletedTenants] = useState<any[]>([]);
   const [fees, setFees] = useState<any[]>([]);
   const [complaints, setComplaints] = useState<any[]>([]);
 
@@ -182,6 +183,7 @@ export default function App() {
     if (!user || !selectedHostel) {
       setRooms([]);
       setTenants([]);
+      setDeletedTenants([]);
       setFees([]);
       setComplaints([]);
       return;
@@ -189,35 +191,33 @@ export default function App() {
 
     const unsubRooms = onSnapshot(
       query(collection(db, 'rooms'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        setRooms(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }
+      (snapshot) => setRooms(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
 
     const unsubTenants = onSnapshot(
       query(collection(db, 'tenants'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        setTenants(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }
+      (snapshot) => setTenants(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
+
+    const unsubDeletedTenants = onSnapshot(
+      query(collection(db, 'deletedTenants'), orderBy('deletedAt', 'desc')),
+      (snapshot) => setDeletedTenants(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
 
     const unsubFees = onSnapshot(
       query(collection(db, 'fees'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        setFees(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }
+      (snapshot) => setFees(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
 
     const unsubComplaints = onSnapshot(
       query(collection(db, 'complaints'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        setComplaints(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }
+      (snapshot) => setComplaints(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })))
     );
 
     return () => {
       unsubRooms();
       unsubTenants();
+      unsubDeletedTenants();
       unsubFees();
       unsubComplaints();
     };
@@ -236,47 +236,34 @@ export default function App() {
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
-    () =>
-      rooms.filter(
-        (item) =>
-          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
-      ),
+    () => rooms.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
     [rooms, selectedHostel, ownerHostels]
   );
 
   const currentTenants = useMemo(
-    () =>
-      tenants.filter(
-        (item) =>
-          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
-      ),
+    () => tenants.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
     [tenants, selectedHostel, ownerHostels]
   );
 
+  const currentDeletedTenants = useMemo(
+    () => deletedTenants.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
+    [deletedTenants, selectedHostel, ownerHostels]
+  );
+
   const currentFees = useMemo(
-    () =>
-      fees.filter(
-        (item) =>
-          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
-      ),
+    () => fees.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
     [fees, selectedHostel, ownerHostels]
   );
 
   const currentComplaints = useMemo(
-    () =>
-      complaints.filter(
-        (item) =>
-          ownerHostels.includes(item.hostel) && item.hostel === selectedHostel
-      ),
+    () => complaints.filter((item) => ownerHostels.includes(item.hostel) && item.hostel === selectedHostel),
     [complaints, selectedHostel, ownerHostels]
   );
 
   const searchedRooms = useMemo(() => {
     const list = showVacantOnly
       ? currentRooms.filter((room) => {
-          const occupied = currentTenants.filter(
-            (t) => t.roomNo === room.roomNo
-          ).length;
+          const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
           return Number(room.totalBeds || 0) - occupied > 0;
         })
       : currentRooms;
@@ -290,12 +277,15 @@ export default function App() {
 
   const filteredTenants = useMemo(() => {
     let list = currentTenants;
-    if (selectedRoom) list = list.filter((t) => t.roomNo === selectedRoom);
+
+    if (selectedRoom) {
+      list = list.filter((item) => item.roomNo === selectedRoom);
+    }
 
     if (tenantSearch.trim()) {
       const q = tenantSearch.toLowerCase();
-      list = list.filter((t) =>
-        `${t.name} ${t.roomNo} ${t.phone} ${t.aadhaarNo || ''}`
+      list = list.filter((item) =>
+        `${item.name} ${item.roomNo} ${item.phone} ${item.aadhaarNo || ''}`
           .toLowerCase()
           .includes(q)
       );
@@ -371,14 +361,17 @@ export default function App() {
     () => currentMonthRecords.reduce((s, i) => s + Number(i.amount || 0), 0),
     [currentMonthRecords]
   );
+
   const currentMonthCollected = useMemo(
     () => currentMonthRecords.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
     [currentMonthRecords]
   );
+
   const currentMonthPending = useMemo(
     () => currentMonthRecords.reduce((s, i) => s + Number(i.dueAmount || 0), 0),
     [currentMonthRecords]
   );
+
   const totalSecurityDepositCollected = useMemo(
     () => currentTenants.reduce((s, i) => s + Number(i.securityDeposit || 0), 0),
     [currentTenants]
@@ -388,6 +381,7 @@ export default function App() {
     () => currentComplaints.filter((c) => c.status !== 'Resolved').length,
     [currentComplaints]
   );
+
   const resolvedComplaints = useMemo(
     () => currentComplaints.filter((c) => c.status === 'Resolved').length,
     [currentComplaints]
@@ -436,6 +430,7 @@ export default function App() {
     const duplicate = currentRooms.some(
       (r) => String(r.roomNo).trim() === String(roomForm.roomNo).trim()
     );
+
     if (duplicate) {
       alert('Room number already exists');
       return;
@@ -493,6 +488,7 @@ export default function App() {
         String(t.bedNo).trim().toLowerCase() ===
         String(tenantForm.bedNo).trim().toLowerCase()
     );
+
     if (sameBed) {
       alert('This bed number is already occupied in the room.');
       return;
@@ -652,6 +648,7 @@ export default function App() {
 
   const toggleComplaintStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'Resolved' ? 'Pending' : 'Resolved';
+
     await updateDoc(doc(db, 'complaints', id), {
       status: newStatus,
       resolvedDate: newStatus === 'Resolved' ? new Date().toLocaleDateString() : '',
@@ -666,11 +663,18 @@ export default function App() {
   };
 
   const deleteTenantWithRelatedData = async (tenant: any) => {
-    const ok = window.confirm(`Delete ${tenant.name} and all related fee/complaint data?`);
+    const ok = window.confirm(`Delete ${tenant.name} and save to history?`);
     if (!ok) return;
 
     try {
       const roomMatch = currentRooms.find((r) => r.roomNo === tenant.roomNo);
+
+      await addDoc(collection(db, 'deletedTenants'), {
+        ...tenant,
+        originalTenantId: tenant.id,
+        deletedAt: Date.now(),
+        deletedDate: new Date().toLocaleString(),
+      });
 
       await deleteDoc(doc(db, 'tenants', tenant.id));
 
@@ -713,7 +717,7 @@ export default function App() {
       if (selectedFeeTenant === tenant.name) setSelectedFeeTenant('');
       if (openTenantId === tenant.id) setOpenTenantId('');
 
-      alert('Tenant and related records deleted successfully');
+      alert('Tenant deleted and saved to history.');
     } catch {
       alert('Failed to delete tenant data');
     }
@@ -782,9 +786,9 @@ export default function App() {
         <div style={styles.hero}>
           <div>
             <p style={styles.small}>DWARAKA STAYS</p>
-            <h1 style={styles.title}>Firebase Hostel Management</h1>
+            <h1 style={styles.title}>Hostel Management Dashboard</h1>
             <p style={styles.subtitle}>
-              Accessible hostels: {ownerHostels.join(', ')}
+              Manage rooms, tenants, payments, complaints and deleted tenant history.
             </p>
           </div>
 
@@ -804,6 +808,10 @@ export default function App() {
               </select>
             </div>
 
+            <button style={styles.historyBtn} onClick={() => setActiveTab('history')}>
+              History
+            </button>
+
             <button style={styles.logoutBtn} onClick={handleLogout}>
               Logout
             </button>
@@ -813,18 +821,18 @@ export default function App() {
         <div style={styles.statsGrid}>
           <StatCard title="Total Rooms" value={stats.totalRooms} sub={`Beds: ${stats.totalBeds}`} onClick={() => setActiveTab('rooms')} />
           <StatCard title="Occupied Beds" value={stats.occupiedBeds} sub={`Vacant: ${stats.vacantBeds}`} />
-          <StatCard title="Vacant Beds" value={stats.vacantBeds} sub={`Occupied: ${stats.occupiedBeds}`} onClick={() => {
+          <StatCard title="Vacant Beds" value={stats.vacantBeds} sub="Click to view" onClick={() => {
             setActiveTab('rooms');
             setShowVacantOnly(true);
           }} />
-          <StatCard title="Total Tenants" value={stats.totalTenants} sub="Saved online" onClick={() => setActiveTab('tenants')} />
-          <StatCard title="Expected Fee" value={formatCurrency(currentMonthExpectedFee)} sub={currentMonthLabel} />
+          <StatCard title="Total Tenants" value={stats.totalTenants} sub="Active tenants" onClick={() => setActiveTab('tenants')} />
           <StatCard title="Collected Fee" value={formatCurrency(currentMonthCollected)} sub={currentMonthLabel} />
           <StatCard title="Pending Fee" value={formatCurrency(currentMonthPending)} sub={currentMonthLabel} onClick={() => {
             setActiveTab('fees');
             setShowUnpaidOnly(true);
           }} />
           <StatCard title="Security Deposit" value={formatCurrency(totalSecurityDepositCollected)} sub="Collected" />
+          <StatCard title="Deleted History" value={currentDeletedTenants.length} sub="Old tenants" onClick={() => setActiveTab('history')} />
           <StatCard title="Active Complaints" value={activeComplaints} sub="Open" onClick={() => setActiveTab('complaints')} />
           <StatCard title="Resolved Complaints" value={resolvedComplaints} sub="Closed" onClick={() => setActiveTab('complaints')} />
         </div>
@@ -856,6 +864,7 @@ export default function App() {
             ['tenants', 'Tenant Details'],
             ['fees', 'Monthly Fees'],
             ['complaints', 'Complaints'],
+            ['history', 'Deleted History'],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -901,9 +910,7 @@ export default function App() {
                 <p style={styles.empty}>No rooms yet</p>
               ) : (
                 searchedRooms.map((room) => {
-                  const occupied = currentTenants.filter(
-                    (t) => t.roomNo === room.roomNo
-                  ).length;
+                  const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
                   const available = Math.max(0, Number(room.totalBeds || 0) - occupied);
 
                   return (
@@ -1012,7 +1019,7 @@ export default function App() {
                       </button>
 
                       <button
-                        style={styles.smallBtn}
+                        style={styles.dangerBtn}
                         onClick={() => deleteTenantWithRelatedData(tenant)}
                       >
                         Delete
@@ -1022,6 +1029,34 @@ export default function App() {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Deleted Tenant History</h2>
+
+            {currentDeletedTenants.length === 0 ? (
+              <p style={styles.empty}>No deleted tenant history</p>
+            ) : (
+              currentDeletedTenants.map((tenant) => (
+                <div key={tenant.id} style={styles.historyRow}>
+                  <div>
+                    <strong>{tenant.name}</strong>
+                    <p style={styles.rowSub}>
+                      Phone: {tenant.phone || '-'} | Room: {tenant.roomNo || '-'} | Bed: {tenant.bedNo || '-'}
+                    </p>
+                    <p style={styles.rowSub}>Parent Phone: {tenant.parentPhone || '-'}</p>
+                    <p style={styles.rowSub}>Aadhaar No: {tenant.aadhaarNo || '-'}</p>
+                    <p style={styles.rowSub}>
+                      Monthly Fee: {formatCurrency(tenant.monthlyFee || 0)} | Security Deposit: {formatCurrency(tenant.securityDeposit || 0)}
+                    </p>
+                    <p style={styles.rowSub}>Address: {tenant.address || '-'}</p>
+                    <p style={styles.rowSub}>Deleted On: {tenant.deletedDate || '-'}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -1231,15 +1266,17 @@ function StatCard({ title, value, sub, onClick }) {
 const styles: any = {
   page: {
     minHeight: '100vh',
-    background: '#f8fafc',
+    background:
+      'linear-gradient(135deg, #e0f2fe 0%, #fdf2f8 45%, #fff7ed 100%)',
     padding: 20,
     fontFamily: 'Arial, sans-serif',
     color: '#0f172a',
   },
   container: { maxWidth: 1400, margin: '0 auto' },
   hero: {
-    background: 'linear-gradient(135deg,#0f172a,#334155)',
-    borderRadius: 24,
+    background:
+      'linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #f97316 100%)',
+    borderRadius: 28,
     padding: 28,
     color: 'white',
     display: 'flex',
@@ -1247,6 +1284,7 @@ const styles: any = {
     gap: 20,
     flexWrap: 'wrap',
     marginBottom: 20,
+    boxShadow: '0 18px 40px rgba(37,99,235,0.25)',
   },
   heroRight: {
     display: 'flex',
@@ -1254,55 +1292,62 @@ const styles: any = {
     alignItems: 'flex-end',
     flexWrap: 'wrap',
   },
-  small: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#cbd5e1' },
+  small: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#e0f2fe' },
   smallDark: { margin: 0, fontSize: 12, letterSpacing: 3, color: '#64748b' },
   title: { margin: '10px 0', fontSize: 34 },
-  subtitle: { margin: 0, color: '#cbd5e1', maxWidth: 650 },
+  subtitle: { margin: 0, color: '#f8fafc', maxWidth: 650 },
   switchBox: {
     minWidth: 240,
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
   },
-  label: { fontSize: 14, color: '#e2e8f0' },
+  label: { fontSize: 14, color: '#f8fafc' },
   select: {
     width: '100%',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     border: '1px solid #cbd5e1',
     fontSize: 14,
     marginBottom: 12,
     boxSizing: 'border-box',
+    background: 'white',
   },
   tabs: {
     display: 'flex',
     gap: 8,
     flexWrap: 'wrap',
-    background: 'white',
+    background: 'rgba(255,255,255,0.75)',
     padding: 10,
-    borderRadius: 20,
+    borderRadius: 22,
     marginBottom: 20,
+    backdropFilter: 'blur(10px)',
   },
   tab: {
     border: 'none',
-    background: '#f1f5f9',
+    background: '#e0e7ff',
+    color: '#3730a3',
     padding: '12px 16px',
     borderRadius: 14,
     cursor: 'pointer',
     fontWeight: 'bold',
   },
-  activeTab: { background: '#0f172a', color: 'white' },
+  activeTab: {
+    background: 'linear-gradient(135deg,#2563eb,#7c3aed)',
+    color: 'white',
+  },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))',
+    gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))',
     gap: 16,
     marginBottom: 20,
   },
   statCard: {
-    background: 'white',
-    borderRadius: 20,
+    background: 'rgba(255,255,255,0.9)',
+    borderRadius: 22,
     padding: 20,
-    boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
+    boxShadow: '0 12px 28px rgba(15,23,42,0.10)',
+    border: '1px solid rgba(255,255,255,0.8)',
   },
   statTitle: { margin: 0, color: '#64748b' },
   statValue: { margin: '10px 0 4px', fontSize: 24 },
@@ -1315,14 +1360,20 @@ const styles: any = {
   },
   collectionCard: {
     background: 'white',
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 20,
-    boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
+    boxShadow: '0 12px 28px rgba(15,23,42,0.10)',
+    borderLeft: '6px solid #f97316',
   },
   collectionTitle: { margin: 0, color: '#64748b', fontSize: 14 },
-  collectionValue: { margin: '10px 0 6px', fontSize: 28, color: '#0f172a' },
+  collectionValue: { margin: '10px 0 6px', fontSize: 28, color: '#2563eb' },
   collectionSub: { color: '#64748b', fontSize: 13 },
-  summaryRow: { margin: '6px 0 0', color: '#0f172a', fontSize: 14, fontWeight: 600 },
+  summaryRow: {
+    margin: '6px 0 0',
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: 600,
+  },
   grid2: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))',
@@ -1330,65 +1381,99 @@ const styles: any = {
     marginBottom: 20,
   },
   card: {
-    background: 'white',
-    borderRadius: 20,
+    background: 'rgba(255,255,255,0.95)',
+    borderRadius: 24,
     padding: 20,
-    boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
+    boxShadow: '0 12px 28px rgba(15,23,42,0.10)',
   },
-  cardTitle: { marginTop: 0, marginBottom: 16 },
+  cardTitle: { marginTop: 0, marginBottom: 16, color: '#1e3a8a' },
   input: {
     width: '100%',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     border: '1px solid #cbd5e1',
     fontSize: 14,
     marginBottom: 12,
     boxSizing: 'border-box',
+    background: '#f8fafc',
   },
   textarea: {
     width: '100%',
     minHeight: 110,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     border: '1px solid #cbd5e1',
     fontSize: 14,
     marginBottom: 12,
     resize: 'vertical',
     boxSizing: 'border-box',
+    background: '#f8fafc',
   },
   primaryBtn: {
     width: '100%',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     border: 'none',
-    background: '#0f172a',
+    background: 'linear-gradient(135deg,#16a34a,#22c55e)',
     color: 'white',
     fontWeight: 700,
     cursor: 'pointer',
+    boxShadow: '0 8px 18px rgba(22,163,74,0.25)',
   },
   logoutBtn: {
     padding: '12px 16px',
-    borderRadius: 12,
+    borderRadius: 14,
     border: 'none',
-    background: '#ea580c',
+    background: '#ef4444',
     color: 'white',
     fontWeight: 700,
     cursor: 'pointer',
     height: 46,
+  },
+  historyBtn: {
+    padding: '12px 16px',
+    borderRadius: 14,
+    border: 'none',
+    background: '#facc15',
+    color: '#713f12',
+    fontWeight: 800,
+    cursor: 'pointer',
+    height: 46,
+  },
+  dangerBtn: {
+    border: 'none',
+    background: '#ef4444',
+    color: 'white',
+    padding: '8px 12px',
+    borderRadius: 10,
+    cursor: 'pointer',
+    fontWeight: 700,
   },
   row: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 12,
-    padding: '12px 0',
+    padding: '14px 0',
     borderBottom: '1px solid #e2e8f0',
   },
+  historyRow: {
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
   rowSub: { margin: '4px 0 0', fontSize: 13, color: '#64748b' },
-  rowActions: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+  rowActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
   badge: {
-    background: '#e2e8f0',
-    color: '#334155',
+    background: '#dbeafe',
+    color: '#1e40af',
     borderRadius: 999,
     padding: '6px 12px',
     fontSize: 12,
@@ -1408,7 +1493,7 @@ const styles: any = {
   linkBtn: {
     background: 'none',
     border: 'none',
-    color: '#0f172a',
+    color: '#2563eb',
     textDecoration: 'underline',
     fontWeight: 'bold',
     cursor: 'pointer',
@@ -1421,7 +1506,7 @@ const styles: any = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#f8fafc',
+    background: 'linear-gradient(135deg,#2563eb,#7c3aed,#f97316)',
     padding: 20,
     fontFamily: 'Arial, sans-serif',
   },
@@ -1430,8 +1515,8 @@ const styles: any = {
     maxWidth: 420,
     background: 'white',
     padding: 24,
-    borderRadius: 20,
-    boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
+    borderRadius: 24,
+    boxShadow: '0 18px 40px rgba(15,23,42,0.25)',
   },
   authTitle: {
     marginTop: 8,
