@@ -34,7 +34,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-
 const iplThemes = [
   { name: 'CSK', bg: 'linear-gradient(135deg,#fff200,#f59e0b)', fg: '#3b2200' },
   { name: 'MI', bg: 'linear-gradient(135deg,#004ba0,#00a3e0)', fg: '#ffffff' },
@@ -97,6 +96,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showIntroVideo, setShowIntroVideo] = useState(true);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -172,6 +173,8 @@ export default function App() {
     status: 'Pending',
     resolvedDate: '',
   });
+
+
 
 
 
@@ -320,6 +323,8 @@ export default function App() {
     () => tenants.filter((item) => item.hostel === selectedHostel),
     [tenants, selectedHostel, ownerHostels]
   );
+
+
 
   const currentDeletedTenants = useMemo(
     () => deletedTenants.filter((item) => item.hostel === selectedHostel),
@@ -494,6 +499,13 @@ export default function App() {
     };
   }, [currentRooms, currentTenants]);
 
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(''), 4000);
+  };
+
+
+
   const handleLogin = async () => {
     try {
       setOwnerError('');
@@ -629,7 +641,7 @@ export default function App() {
       status: 'Active',
     });
 
-    alert('Tenant added successfully');
+    showToast(`Tenant added: ${tenantForm.name || 'New tenant'}`);
   };
 
   const addFee = async () => {
@@ -908,7 +920,7 @@ export default function App() {
         setActiveTab('fees');
         setShowUnpaidOnly(true);
       } else {
-        setActiveTab('adminLogin');
+        setShowAdminLoginModal(true);
       }
     } },
     { title: 'Security Deposit', value: isAdminMode ? formatCurrency(totalSecurityDepositCollected) : 'Admin', sub: isAdminMode ? 'Collected' : 'Login required', teamIndex: 6 },
@@ -1067,7 +1079,7 @@ export default function App() {
                 </button>
               </>
             ) : (
-              <button style={styles.loginTopBtn} onClick={() => setActiveTab('adminLogin')}>
+              <button style={styles.loginTopBtn} onClick={() => setShowAdminLoginModal(true)}>
                 Admin Login
               </button>
             )}
@@ -1195,40 +1207,6 @@ export default function App() {
         </div>
 
 
-        {activeTab === 'adminLogin' && !isAdminMode && (
-          <div style={styles.adminLoginGrid}>
-            <div style={styles.publicRoyalCard}>
-              <img src="/dwaraka-royal-bg.png" alt="Dwaraka Royal" style={styles.publicRoyalImage} />
-            </div>
-
-            <div style={{ ...styles.card, ...styles.royalFormCard }}>
-              <h2 style={styles.cardTitle}>Admin Login</h2>
-              <p style={styles.empty}>Login only required for adding/editing/deleting data.</p>
-
-              <input
-                style={styles.input}
-                type="email"
-                placeholder="Owner Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <input
-                style={styles.input}
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-
-              {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
-
-              <button style={styles.primaryBtn} onClick={handleLogin}>
-                Login as Admin
-              </button>
-            </div>
-          </div>
-        )}
-
         {activeTab === 'rooms' && (
           <div style={styles.grid2}>
             {isAdminMode ? (
@@ -1253,7 +1231,7 @@ export default function App() {
                 <div style={styles.publicRoyalOverlay}>
                   <h2>Public View</h2>
                   <p>Rooms are visible without login. Admin login is required to add, edit or delete rooms.</p>
-                  <button style={styles.loginTopBtn} onClick={() => setActiveTab('adminLogin')}>
+                  <button style={styles.loginTopBtn} onClick={() => setShowAdminLoginModal(true)}>
                     Admin Login
                   </button>
                 </div>
@@ -1776,6 +1754,48 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {showAdminLoginModal && !isAdminMode && (
+          <div style={styles.loginModalOverlay} onClick={() => setShowAdminLoginModal(false)}>
+            <div style={styles.loginModal} onClick={(e) => e.stopPropagation()}>
+              <button style={styles.modalCloseBtn} onClick={() => setShowAdminLoginModal(false)}>
+                ×
+              </button>
+
+              <img src="/dwaraka-logo.png" alt="Dwaraka Premium Stays" style={styles.loginModalLogo} />
+              <h2 style={styles.loginModalTitle}>Admin Login</h2>
+              <p style={styles.loginModalSub}>Login required for adding, editing and deleting data.</p>
+
+              <input
+                style={styles.input}
+                type="email"
+                placeholder="Owner Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                style={styles.input}
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+
+              {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
+
+              <button style={styles.primaryBtn} onClick={handleLogin}>
+                Login as Admin
+              </button>
+            </div>
+          </div>
+        )}
+
+        {toastMessage && (
+          <div style={styles.toastBox}>
+            {toastMessage}
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -1814,6 +1834,79 @@ function StatCard({ title, value, sub, onClick, teamIndex = 0 }) {
 }
 
 const styles: any = {
+
+
+  loginModalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(2,6,23,0.78)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999999,
+    padding: 16,
+    backdropFilter: 'blur(8px)',
+  },
+  loginModal: {
+    width: '100%',
+    maxWidth: 430,
+    background:
+      'linear-gradient(135deg, rgba(2,6,23,0.96), rgba(69,10,10,0.94))',
+    border: '1px solid rgba(250,204,21,0.55)',
+    borderRadius: 28,
+    padding: 24,
+    color: '#fef3c7',
+    boxShadow: '0 30px 80px rgba(0,0,0,0.55), 0 0 30px rgba(250,204,21,0.18)',
+    position: 'relative',
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid rgba(250,204,21,0.45)',
+    background: 'rgba(255,255,255,0.10)',
+    color: '#fef3c7',
+    fontSize: 22,
+    cursor: 'pointer',
+  },
+  loginModalLogo: {
+    width: 110,
+    height: 110,
+    objectFit: 'cover',
+    borderRadius: 24,
+    display: 'block',
+    margin: '0 auto 12px',
+    border: '2px solid rgba(250,204,21,0.75)',
+    boxShadow: '0 14px 30px rgba(0,0,0,0.45)',
+  },
+  loginModalTitle: {
+    margin: '0 0 6px',
+    textAlign: 'center',
+    color: '#facc15',
+    letterSpacing: 1,
+  },
+  loginModalSub: {
+    margin: '0 0 18px',
+    textAlign: 'center',
+    color: '#fde68a',
+    fontSize: 14,
+  },
+  toastBox: {
+    position: 'fixed',
+    right: 22,
+    top: 22,
+    zIndex: 999999,
+    background: 'linear-gradient(135deg,#16a34a,#22c55e)',
+    color: 'white',
+    padding: '14px 18px',
+    borderRadius: 16,
+    fontWeight: 900,
+    boxShadow: '0 16px 34px rgba(22,163,74,0.35)',
+    maxWidth: 360,
+  },
 
   introSplash: {
     position: 'fixed',
