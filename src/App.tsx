@@ -20,6 +20,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
+import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBO5WdFQIYpwCylsIFIkAvV6ZHnp5imd-o',
@@ -33,6 +34,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// IMPORTANT: Replace this with your Firebase Web Push certificate key.
+// Firebase Console → Project settings → Cloud Messaging → Web Push certificates → Generate key pair.
+const VAPID_KEY = 'PASTE_YOUR_FIREBASE_WEB_PUSH_CERTIFICATE_KEY_HERE';
+let messagingPromise: Promise<any> | null = null;
+
+if (typeof window !== 'undefined') {
+  messagingPromise = isSupported().then((supported) => (supported ? getMessaging(app) : null));
+}
+
 
 
 const iplThemes = [
@@ -101,6 +112,9 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState('');
   const [knownTenantIds, setKnownTenantIds] = useState<Set<string>>(new Set());
   const [tenantWatcherReady, setTenantWatcherReady] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -178,6 +192,34 @@ export default function App() {
   });
 
 
+
+
+  useEffect(() => {
+    // Foreground Firebase push notification. Background/lock-screen notification is handled by firebase-messaging-sw.js.
+    let unsubscribeMessage: any = null;
+
+    messagingPromise?.then((messaging) => {
+      if (!messaging) return;
+
+      unsubscribeMessage = onMessage(messaging, (payload) => {
+        const title = payload.notification?.title || 'Dwaraka Stays';
+        const body = payload.notification?.body || 'New update received';
+
+        showToast(`${title}: ${body}`);
+
+        if (Notification.permission === 'granted') {
+          new Notification(title, {
+            body,
+            icon: '/dwaraka-logo.png',
+          });
+        }
+      });
+    });
+
+    return () => {
+      if (unsubscribeMessage) unsubscribeMessage();
+    };
+  }, []);
 
   useEffect(() => {
     const introTimer = setTimeout(() => {
@@ -335,6 +377,10 @@ export default function App() {
 
     if (!tenantWatcherReady) {
       setKnownTenantIds(ids);
+      const storageKey = `dwaraka_notified_tenants_${selectedHostel || 'all'}`;
+      const oldSaved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const merged = Array.from(new Set([...oldSaved, ...Array.from(ids)]));
+      localStorage.setItem(storageKey, JSON.stringify(merged));
       setTenantWatcherReady(true);
       return;
     }
@@ -342,11 +388,11 @@ export default function App() {
     const newTenant = currentTenants.find((tenant) => !knownTenantIds.has(tenant.id));
 
     if (newTenant) {
-      showToast(`New tenant added: ${newTenant.name || 'Tenant'} • Room ${newTenant.roomNo || '-'}`);
+      notifyOnceForTenant(newTenant);
     }
 
     setKnownTenantIds(ids);
-  }, [currentTenants, selectedHostel]);
+  }, [currentTenants, selectedHostel, knownTenantIds, tenantWatcherReady]);
 
   const currentDeletedTenants = useMemo(
     () => deletedTenants.filter((item) => item.hostel === selectedHostel),
@@ -526,6 +572,91 @@ export default function App() {
     window.setTimeout(() => setToastMessage(''), 4000);
   };
 
+
+  const sendBrowserNotification = (title: string, body: string) => {
+    if (!('Notification' in window)) {
+      showToast(body);
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/dwaraka-logo.png',
+        badge: '/dwaraka-logo.png',
+      });
+      return;
+    }
+
+    // If permission is not allowed, show only in-app toast.
+    showToast(body);
+  };
+
+  const notifyOnceForTenant = (tenant: any) => {
+    if (!tenant?.id) return;
+
+    const storageKey = `dwaraka_notified_tenants_${selectedHostel || 'all'}`;
+    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+
+    if (saved.includes(tenant.id)) return;
+
+    const message = `${tenant.name || 'Tenant'} added to Room ${tenant.roomNo || '-'}`;
+
+    showToast(`New tenant added: ${tenant.name || 'Tenant'} • Room ${tenant.roomNo || '-'}`);
+    sendBrowserNotification('New Tenant Added', message);
+
+    localStorage.setItem(storageKey, JSON.stringify([...saved, tenant.id]));
+  };
+
+  const requestPushNotifications = async () => {
+    try {
+      if (!('Notification' in window)) {
+        showToast('This browser does not support notifications');
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+
+      if (permission !== 'granted') {
+        showToast('Notification permission not allowed');
+        return;
+      }
+
+      const messaging = await messagingPromise;
+      if (!messaging) {
+        showToast('Firebase messaging is not supported in this browser');
+        return;
+      }
+
+      if (VAPID_KEY.includes('PASTE_YOUR_FIREBASE')) {
+        showToast('Add your Firebase Web Push key in App.tsx first');
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
+      const token = await getToken(messaging, {
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: registration,
+      });
+
+      if (token) {
+        await addDoc(collection(db, 'notificationTokens'), {
+          token,
+          hostel: selectedHostel || 'All',
+          createdAt: Date.now(),
+          userAgent: navigator.userAgent,
+        });
+
+        showToast('Push notifications enabled');
+      }
+    } catch (error) {
+      console.error('Notification setup error:', error);
+      showToast('Notification setup failed');
+    }
+  };
+
   const handleLogin = async () => {
     try {
       setOwnerError('');
@@ -662,6 +793,7 @@ export default function App() {
     });
 
     showToast(`Tenant added: ${tenantForm.name || 'New tenant'}`);
+    sendBrowserNotification('Tenant Added', `${tenantForm.name || 'New tenant'} added to Room ${tenantForm.roomNo || '-'}`);
   };
 
   const addFee = async () => {
@@ -1079,6 +1211,10 @@ export default function App() {
                 ))}
               </select>
             </div>
+
+            <button style={styles.notifyBtn} onClick={requestPushNotifications}>
+              {notificationPermission === 'granted' ? 'Notifications On' : 'Enable Notifications'}
+            </button>
 
             {isAdminMode ? (
               <>
@@ -2396,6 +2532,17 @@ const styles: any = {
     marginBottom: 20,
   },
 
+  notifyBtn: {
+    padding: '12px 16px',
+    borderRadius: 14,
+    border: '1px solid rgba(34,197,94,0.65)',
+    background: 'rgba(34,197,94,0.16)',
+    color: '#dcfce7',
+    fontWeight: 900,
+    cursor: 'pointer',
+    height: 46,
+    backdropFilter: 'blur(10px)',
+  },
   loginTopBtn: {
     padding: '12px 18px',
     borderRadius: 14,
