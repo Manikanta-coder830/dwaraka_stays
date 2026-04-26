@@ -20,7 +20,6 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBO5WdFQIYpwCylsIFIkAvV6ZHnp5imd-o',
@@ -34,16 +33,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
-// IMPORTANT: Replace this with your Firebase Web Push certificate key.
-// Firebase Console → Project settings → Cloud Messaging → Web Push certificates → Generate key pair.
-const VAPID_KEY = 'BHSs91P6YfTqPez-fLyFGLNaEE54R9Z7UFvVCJAih7DhHknQZqMe_tSytxAtw1KHAPzi_iXBsL9Ti1Neo20FITk';
-let messagingPromise: Promise<any> | null = null;
-
-if (typeof window !== 'undefined') {
-  messagingPromise = isSupported().then((supported) => (supported ? getMessaging(app) : null));
-}
-
 
 
 const iplThemes = [
@@ -108,13 +97,6 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showIntroVideo, setShowIntroVideo] = useState(true);
-  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const [knownTenantIds, setKnownTenantIds] = useState<Set<string>>(new Set());
-  const [tenantWatcherReady, setTenantWatcherReady] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState(
-    typeof Notification !== 'undefined' ? Notification.permission : 'default'
-  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
@@ -192,34 +174,6 @@ export default function App() {
   });
 
 
-
-
-  useEffect(() => {
-    // Foreground Firebase push notification. Background/lock-screen notification is handled by firebase-messaging-sw.js.
-    let unsubscribeMessage: any = null;
-
-    messagingPromise?.then((messaging) => {
-      if (!messaging) return;
-
-      unsubscribeMessage = onMessage(messaging, (payload) => {
-        const title = payload.notification?.title || 'Dwaraka Stays';
-        const body = payload.notification?.body || 'New update received';
-
-        showToast(`${title}: ${body}`);
-
-        if (Notification.permission === 'granted') {
-          new Notification(title, {
-            body,
-            icon: '/dwaraka-logo.png',
-          });
-        }
-      });
-    });
-
-    return () => {
-      if (unsubscribeMessage) unsubscribeMessage();
-    };
-  }, []);
 
   useEffect(() => {
     const introTimer = setTimeout(() => {
@@ -355,8 +309,6 @@ export default function App() {
     setOpenTenantId('');
     setOpenDeletedTenantId('');
     setSelectedTenantProfile(null);
-    setTenantWatcherReady(false);
-    setKnownTenantIds(new Set());
   }, [selectedHostel]);
 
   const currentRooms = useMemo(
@@ -368,31 +320,6 @@ export default function App() {
     () => tenants.filter((item) => item.hostel === selectedHostel),
     [tenants, selectedHostel, ownerHostels]
   );
-
-
-  useEffect(() => {
-    if (!selectedHostel) return;
-
-    const ids = new Set(currentTenants.map((tenant) => tenant.id));
-
-    if (!tenantWatcherReady) {
-      setKnownTenantIds(ids);
-      const storageKey = `dwaraka_notified_tenants_${selectedHostel || 'all'}`;
-      const oldSaved = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      const merged = Array.from(new Set([...oldSaved, ...Array.from(ids)]));
-      localStorage.setItem(storageKey, JSON.stringify(merged));
-      setTenantWatcherReady(true);
-      return;
-    }
-
-    const newTenant = currentTenants.find((tenant) => !knownTenantIds.has(tenant.id));
-
-    if (newTenant) {
-      notifyOnceForTenant(newTenant);
-    }
-
-    setKnownTenantIds(ids);
-  }, [currentTenants, selectedHostel, knownTenantIds, tenantWatcherReady]);
 
   const currentDeletedTenants = useMemo(
     () => deletedTenants.filter((item) => item.hostel === selectedHostel),
@@ -567,91 +494,6 @@ export default function App() {
     };
   }, [currentRooms, currentTenants]);
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    window.setTimeout(() => setToastMessage(''), 4000);
-  };
-
-
-  const sendBrowserNotification = (title: string, body: string) => {
-    if (!('Notification' in window)) {
-      showToast(body);
-      return;
-    }
-
-    if (Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/dwaraka-logo.png',
-        badge: '/dwaraka-logo.png',
-      });
-      return;
-    }
-
-    // If permission is not allowed, show only in-app toast.
-    showToast(body);
-  };
-
-  const notifyOnceForTenant = (tenant: any) => {
-    if (!tenant?.id) return;
-
-    const storageKey = `dwaraka_notified_tenants_${selectedHostel || 'all'}`;
-    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
-
-    if (saved.includes(tenant.id)) return;
-
-    const message = `${tenant.name || 'Tenant'} added to Room ${tenant.roomNo || '-'}`;
-
-    showToast(`New tenant added: ${tenant.name || 'Tenant'} • Room ${tenant.roomNo || '-'}`);
-    sendBrowserNotification('New Tenant Added', message);
-
-    localStorage.setItem(storageKey, JSON.stringify([...saved, tenant.id]));
-  };
-
-  const requestPushNotifications = async () => {
-    try {
-      if (!('Notification' in window)) {
-        showToast('This browser does not support notifications');
-        return;
-      }
-
-      const permission = await Notification.requestPermission();
-      setNotificationPermission(permission);
-
-      if (permission !== 'granted') {
-        showToast('Notification permission not allowed');
-        return;
-      }
-
-      const messaging = await messagingPromise;
-      if (!messaging) {
-        showToast('Firebase messaging is not supported in this browser');
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-
-      const token = await getToken(messaging, {
-        vapidKey: VAPID_KEY,
-        serviceWorkerRegistration: registration,
-      });
-
-      if (token) {
-        await addDoc(collection(db, 'notificationTokens'), {
-          token,
-          hostel: selectedHostel || 'All',
-          createdAt: Date.now(),
-          userAgent: navigator.userAgent,
-        });
-
-        showToast('Push notifications enabled');
-      }
-    } catch (error) {
-      console.error('Notification setup error:', error);
-      showToast('Notification setup failed');
-    }
-  };
-
   const handleLogin = async () => {
     try {
       setOwnerError('');
@@ -787,8 +629,7 @@ export default function App() {
       status: 'Active',
     });
 
-    showToast(`Tenant added: ${tenantForm.name || 'New tenant'}`);
-    sendBrowserNotification('Tenant Added', `${tenantForm.name || 'New tenant'} added to Room ${tenantForm.roomNo || '-'}`);
+    alert('Tenant added successfully');
   };
 
   const addFee = async () => {
@@ -1067,7 +908,7 @@ export default function App() {
         setActiveTab('fees');
         setShowUnpaidOnly(true);
       } else {
-        setShowAdminLoginModal(true);
+        setActiveTab('adminLogin');
       }
     } },
     { title: 'Security Deposit', value: isAdminMode ? formatCurrency(totalSecurityDepositCollected) : 'Admin', sub: isAdminMode ? 'Collected' : 'Login required', teamIndex: 6 },
@@ -1207,12 +1048,6 @@ export default function App() {
               </select>
             </div>
 
-            {isAdminMode && (
-              <button style={styles.notifyBtn} onClick={requestPushNotifications}>
-                {notificationPermission === 'granted' ? 'Notifications On' : 'Enable Notifications'}
-              </button>
-            )}
-
             {isAdminMode ? (
               <>
                 <button style={styles.historyBtn} onClick={() => setActiveTab('history')}>
@@ -1232,7 +1067,7 @@ export default function App() {
                 </button>
               </>
             ) : (
-              <button style={styles.loginTopBtn} onClick={() => setShowAdminLoginModal(true)}>
+              <button style={styles.loginTopBtn} onClick={() => setActiveTab('adminLogin')}>
                 Admin Login
               </button>
             )}
@@ -1360,6 +1195,40 @@ export default function App() {
         </div>
 
 
+        {activeTab === 'adminLogin' && !isAdminMode && (
+          <div style={styles.adminLoginGrid}>
+            <div style={styles.publicRoyalCard}>
+              <img src="/dwaraka-royal-bg.png" alt="Dwaraka Royal" style={styles.publicRoyalImage} />
+            </div>
+
+            <div style={{ ...styles.card, ...styles.royalFormCard }}>
+              <h2 style={styles.cardTitle}>Admin Login</h2>
+              <p style={styles.empty}>Login only required for adding/editing/deleting data.</p>
+
+              <input
+                style={styles.input}
+                type="email"
+                placeholder="Owner Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                style={styles.input}
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+
+              {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
+
+              <button style={styles.primaryBtn} onClick={handleLogin}>
+                Login as Admin
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'rooms' && (
           <div style={styles.grid2}>
             {isAdminMode ? (
@@ -1384,7 +1253,7 @@ export default function App() {
                 <div style={styles.publicRoyalOverlay}>
                   <h2>Public View</h2>
                   <p>Rooms are visible without login. Admin login is required to add, edit or delete rooms.</p>
-                  <button style={styles.loginTopBtn} onClick={() => setShowAdminLoginModal(true)}>
+                  <button style={styles.loginTopBtn} onClick={() => setActiveTab('adminLogin')}>
                     Admin Login
                   </button>
                 </div>
@@ -1907,48 +1776,6 @@ export default function App() {
             </div>
           </div>
         )}
-
-        {showAdminLoginModal && !isAdminMode && (
-          <div style={styles.loginModalOverlay} onClick={() => setShowAdminLoginModal(false)}>
-            <div style={styles.loginModal} onClick={(e) => e.stopPropagation()}>
-              <button style={styles.modalCloseBtn} onClick={() => setShowAdminLoginModal(false)}>
-                ×
-              </button>
-
-              <img src="/dwaraka-logo.png" alt="Dwaraka Premium Stays" style={styles.loginModalLogo} />
-              <h2 style={styles.loginModalTitle}>Admin Login</h2>
-              <p style={styles.loginModalSub}>Login required for adding, editing and deleting data.</p>
-
-              <input
-                style={styles.input}
-                type="email"
-                placeholder="Owner Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <input
-                style={styles.input}
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-
-              {ownerError ? <p style={styles.errorText}>{ownerError}</p> : null}
-
-              <button style={styles.primaryBtn} onClick={handleLogin}>
-                Login as Admin
-              </button>
-            </div>
-          </div>
-        )}
-
-        {toastMessage && (
-          <div style={styles.toastBox}>
-            {toastMessage}
-          </div>
-        )}
-
       </div>
     </div>
   );
@@ -1987,79 +1814,6 @@ function StatCard({ title, value, sub, onClick, teamIndex = 0 }) {
 }
 
 const styles: any = {
-
-
-  loginModalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(2,6,23,0.78)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 999999,
-    padding: 16,
-    backdropFilter: 'blur(8px)',
-  },
-  loginModal: {
-    width: '100%',
-    maxWidth: 430,
-    background:
-      'linear-gradient(135deg, rgba(2,6,23,0.96), rgba(69,10,10,0.94))',
-    border: '1px solid rgba(250,204,21,0.55)',
-    borderRadius: 28,
-    padding: 24,
-    color: '#fef3c7',
-    boxShadow: '0 30px 80px rgba(0,0,0,0.55), 0 0 30px rgba(250,204,21,0.18)',
-    position: 'relative',
-  },
-  modalCloseBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 14,
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    border: '1px solid rgba(250,204,21,0.45)',
-    background: 'rgba(255,255,255,0.10)',
-    color: '#fef3c7',
-    fontSize: 22,
-    cursor: 'pointer',
-  },
-  loginModalLogo: {
-    width: 110,
-    height: 110,
-    objectFit: 'cover',
-    borderRadius: 24,
-    display: 'block',
-    margin: '0 auto 12px',
-    border: '2px solid rgba(250,204,21,0.75)',
-    boxShadow: '0 14px 30px rgba(0,0,0,0.45)',
-  },
-  loginModalTitle: {
-    margin: '0 0 6px',
-    textAlign: 'center',
-    color: '#facc15',
-    letterSpacing: 1,
-  },
-  loginModalSub: {
-    margin: '0 0 18px',
-    textAlign: 'center',
-    color: '#fde68a',
-    fontSize: 14,
-  },
-  toastBox: {
-    position: 'fixed',
-    right: 22,
-    top: 22,
-    zIndex: 999999,
-    background: 'linear-gradient(135deg,#16a34a,#22c55e)',
-    color: 'white',
-    padding: '14px 18px',
-    borderRadius: 16,
-    fontWeight: 900,
-    boxShadow: '0 16px 34px rgba(22,163,74,0.35)',
-    maxWidth: 360,
-  },
 
   introSplash: {
     position: 'fixed',
@@ -2529,17 +2283,6 @@ const styles: any = {
     marginBottom: 20,
   },
 
-  notifyBtn: {
-    padding: '12px 16px',
-    borderRadius: 14,
-    border: '1px solid rgba(34,197,94,0.65)',
-    background: 'rgba(34,197,94,0.16)',
-    color: '#dcfce7',
-    fontWeight: 900,
-    cursor: 'pointer',
-    height: 46,
-    backdropFilter: 'blur(10px)',
-  },
   loginTopBtn: {
     padding: '12px 18px',
     borderRadius: 14,
