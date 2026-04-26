@@ -629,11 +629,6 @@ export default function App() {
         return;
       }
 
-      if (VAPID_KEY.includes('PASTE_YOUR_FIREBASE')) {
-        showToast('Add your Firebase Web Push key in App.tsx first');
-        return;
-      }
-
       const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
       const token = await getToken(messaging, {
@@ -1212,9 +1207,11 @@ export default function App() {
               </select>
             </div>
 
-            <button style={styles.notifyBtn} onClick={requestPushNotifications}>
-              {notificationPermission === 'granted' ? 'Notifications On' : 'Enable Notifications'}
-            </button>
+            {isAdminMode && (
+              <button style={styles.notifyBtn} onClick={requestPushNotifications}>
+                {notificationPermission === 'granted' ? 'Notifications On' : 'Enable Notifications'}
+              </button>
+            )}
 
             {isAdminMode ? (
               <>
