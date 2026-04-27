@@ -56,6 +56,43 @@ function formatCurrency(amount: any) {
 }
 
 
+
+function getRoomStatusStyle(occupied: number, totalBeds: number) {
+  const safeTotal = Math.max(Number(totalBeds || 0), 1);
+  const percent = Number(occupied || 0) / safeTotal;
+
+  if (percent >= 1) {
+    return {
+      label: 'Full',
+      color: '#ef4444',
+      bg: 'linear-gradient(135deg,#fee2e2,#fff7ed)',
+      glow: '0 14px 28px rgba(239,68,68,0.22)',
+    };
+  }
+
+  if (percent > 0) {
+    return {
+      label: 'Partial',
+      color: '#f59e0b',
+      bg: 'linear-gradient(135deg,#fef3c7,#fff7ed)',
+      glow: '0 14px 28px rgba(245,158,11,0.20)',
+    };
+  }
+
+  return {
+    label: 'Empty',
+    color: '#16a34a',
+    bg: 'linear-gradient(135deg,#dcfce7,#f0fdf4)',
+    glow: '0 14px 28px rgba(22,163,74,0.18)',
+  };
+}
+
+function maskAadhaar(value: any) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length < 4) return '-';
+  return `XXXX XXXX ${digits.slice(-4)}`;
+}
+
 function formatDatePretty(value: any) {
   if (!value) return '-';
   const date = new Date(value);
@@ -120,6 +157,7 @@ export default function App() {
   const [feeStatusFilter, setFeeStatusFilter] = useState('All');
   const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
   const [roomSearch, setRoomSearch] = useState('');
+  const [roomStatusFilter, setRoomStatusFilter] = useState('All');
   const [feeSearch, setFeeSearch] = useState('');
   const [complaintSearch, setComplaintSearch] = useState('');
 
@@ -307,6 +345,7 @@ export default function App() {
     setFeeStatusFilter('All');
     setComplaintStatusFilter('All');
     setRoomSearch('');
+    setRoomStatusFilter('All');
     setFeeSearch('');
     setComplaintSearch('');
     setOpenTenantId('');
@@ -342,19 +381,31 @@ export default function App() {
   );
 
   const searchedRooms = useMemo(() => {
-    const list = showVacantOnly
+    let list = showVacantOnly
       ? currentRooms.filter((room) => {
           const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
           return Number(room.totalBeds || 0) - occupied > 0;
         })
       : currentRooms;
 
+    if (roomStatusFilter !== 'All') {
+      list = list.filter((room) => {
+        const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
+        const totalBeds = Number(room.totalBeds || 0);
+
+        if (roomStatusFilter === 'Empty') return occupied === 0;
+        if (roomStatusFilter === 'Partial') return occupied > 0 && occupied < totalBeds;
+        if (roomStatusFilter === 'Full') return occupied >= totalBeds;
+        return true;
+      });
+    }
+
     return list.filter((room) =>
       `${room.roomNo} ${room.block || ''} ${room.roomType || ''}`
         .toLowerCase()
         .includes(roomSearch.toLowerCase())
     );
-  }, [currentRooms, currentTenants, showVacantOnly, roomSearch]);
+  }, [currentRooms, currentTenants, showVacantOnly, roomSearch, roomStatusFilter]);
 
   const filteredTenants = useMemo(() => {
     let list = currentTenants;
@@ -866,25 +917,25 @@ export default function App() {
   const activityFeed = useMemo(() => {
     const items = [
       ...currentTenants.slice(0, 5).map((t) => ({
-        type: 'Tenant Added',
+        type: '➕ Tenant Added',
         title: t.name || 'Tenant',
         sub: `Room ${t.roomNo || '-'}`,
         time: Number(t.createdAt || 0),
       })),
       ...currentFees.slice(0, 5).map((f) => ({
-        type: 'Fee Updated',
+        type: '💰 Fee Updated',
         title: f.tenantName || 'Tenant',
         sub: `${f.month || '-'} • ${formatCurrency(f.paidAmount || 0)} paid`,
         time: Number(f.createdAt || 0),
       })),
       ...currentDeletedTenants.slice(0, 5).map((t) => ({
-        type: 'Tenant Deleted',
+        type: '❌ Tenant Deleted',
         title: t.name || 'Tenant',
         sub: `Room ${t.roomNo || '-'}`,
         time: Number(t.deletedAt || 0),
       })),
       ...currentComplaints.slice(0, 5).map((c) => ({
-        type: 'Complaint',
+        type: '🛠️ Complaint',
         title: c.tenantName || 'Tenant',
         sub: `${c.type || '-'} • ${c.status || '-'}`,
         time: Number(c.createdAt || 0),
@@ -905,6 +956,60 @@ export default function App() {
       percent: Math.max(6, Math.round((Number(r.total || 0) / max) * 100)),
     }));
   }, [monthlyCollectedSummary]);
+
+
+  const roomStatusSummary = useMemo(() => {
+    let empty = 0;
+    let partial = 0;
+    let full = 0;
+
+    currentRooms.forEach((room) => {
+      const occupied = currentTenants.filter((tenant) => tenant.roomNo === room.roomNo).length;
+      const totalBeds = Number(room.totalBeds || 0);
+
+      if (occupied === 0) empty += 1;
+      else if (occupied >= totalBeds) full += 1;
+      else partial += 1;
+    });
+
+    return { empty, partial, full };
+  }, [currentRooms, currentTenants]);
+
+  const complaintChartData = useMemo(() => {
+    const open = currentComplaints.filter((complaint) => complaint.status !== 'Resolved').length;
+    const resolved = currentComplaints.filter((complaint) => complaint.status === 'Resolved').length;
+    const total = Math.max(open + resolved, 1);
+
+    return [
+      { label: 'Open', count: open, percent: Math.max(5, Math.round((open / total) * 100)) },
+      { label: 'Resolved', count: resolved, percent: Math.max(5, Math.round((resolved / total) * 100)) },
+    ];
+  }, [currentComplaints]);
+
+  const floorHeatMap = useMemo(() => {
+    const floors: any = {};
+
+    currentRooms.forEach((room) => {
+      const roomNo = String(room.roomNo || '');
+      const floor = room.block || roomNo.charAt(0) || 'Other';
+      const occupied = currentTenants.filter((tenant) => tenant.roomNo === room.roomNo).length;
+
+      if (!floors[floor]) {
+        floors[floor] = { floor, rooms: 0, beds: 0, occupied: 0 };
+      }
+
+      floors[floor].rooms += 1;
+      floors[floor].beds += Number(room.totalBeds || 0);
+      floors[floor].occupied += occupied;
+    });
+
+    return Object.values(floors)
+      .map((item: any) => ({
+        ...item,
+        percent: Math.round((item.occupied / Math.max(item.beds, 1)) * 100),
+      }))
+      .sort((a: any, b: any) => String(a.floor).localeCompare(String(b.floor)));
+  }, [currentRooms, currentTenants]);
 
   const dashboardCards = [
     { title: 'Total Rooms', value: stats.totalRooms, sub: `Beds: ${stats.totalBeds}`, teamIndex: 0, onClick: () => setActiveTab('rooms') },
@@ -958,6 +1063,45 @@ export default function App() {
       type: activeComplaints > 0 ? 'warn' : 'good',
     },
   ];
+
+
+  const downloadTenantReceipt = (tenant: any) => {
+    const html = `
+      <html>
+        <head>
+          <title>Dwaraka Tenant Receipt</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 30px; color: #111827; background: #fff7ed; }
+            .box { border: 2px solid #d97706; border-radius: 18px; padding: 24px; max-width: 620px; margin: auto; background: white; }
+            h1 { color: #92400e; margin-bottom: 4px; }
+            h2 { margin-top: 0; }
+            .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding: 10px 0; }
+            .footer { margin-top: 24px; font-size: 12px; color: #6b7280; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h1>DWARAKA PREMIUM STAYS</h1>
+            <h2>Tenant Receipt</h2>
+            <div class="row"><b>Name</b><span>${tenant.name || '-'}</span></div>
+            <div class="row"><b>Room</b><span>${tenant.roomNo || '-'}</span></div>
+            <div class="row"><b>Bed</b><span>${tenant.bedNo || '-'}</span></div>
+            <div class="row"><b>Phone</b><span>${tenant.phone || '-'}</span></div>
+            <div class="row"><b>Monthly Fee</b><span>${formatCurrency(tenant.monthlyFee || 0)}</span></div>
+            <div class="row"><b>Security Deposit</b><span>${formatCurrency(tenant.securityDeposit || 0)}</span></div>
+            <div class="row"><b>Status</b><span>${tenant.status || 'Active'}</span></div>
+            <div class="footer">Generated from Dwaraka Stays Hostel Management</div>
+          </div>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `;
+
+    const receiptWindow = window.open('', '_blank');
+    if (!receiptWindow) return;
+    receiptWindow.document.write(html);
+    receiptWindow.document.close();
+  };
 
   const downloadTenantCSV = () => {
     const rows = [
@@ -1160,6 +1304,45 @@ export default function App() {
                 </div>
               ))
             )}
+
+            <h3 style={styles.miniGoldTitle}>Room Status Chart</h3>
+            <div style={styles.statusPills}>
+              <span style={{ ...styles.statusPill, background: '#dcfce7', color: '#166534' }}>
+                Empty: {roomStatusSummary.empty}
+              </span>
+              <span style={{ ...styles.statusPill, background: '#fef3c7', color: '#92400e' }}>
+                Partial: {roomStatusSummary.partial}
+              </span>
+              <span style={{ ...styles.statusPill, background: '#fee2e2', color: '#991b1b' }}>
+                Full: {roomStatusSummary.full}
+              </span>
+            </div>
+
+            <h3 style={styles.miniGoldTitle}>Vacancy Heat Map</h3>
+            {floorHeatMap.length === 0 ? (
+              <p style={styles.panelSub}>No floor data yet</p>
+            ) : (
+              floorHeatMap.map((floor: any) => (
+                <div key={floor.floor} style={styles.heatRow}>
+                  <span>Floor / Block {floor.floor}</span>
+                  <div style={styles.barTrack}>
+                    <div
+                      style={{
+                        ...styles.heatFill,
+                        width: `${Math.max(5, floor.percent)}%`,
+                        background:
+                          floor.percent >= 90
+                            ? '#ef4444'
+                            : floor.percent >= 50
+                            ? '#f59e0b'
+                            : '#22c55e',
+                      }}
+                    />
+                  </div>
+                  <strong>{floor.percent}%</strong>
+                </div>
+              ))
+            )}
           </div>
 
           <div style={styles.premiumPanel}>
@@ -1181,6 +1364,23 @@ export default function App() {
                   <p style={styles.alertText}>{alert.text}</p>
                 </div>
                 <span style={styles.alertValue}>{alert.value}</span>
+              </div>
+            ))}
+
+            <h3 style={styles.miniGoldTitle}>Complaint Trend</h3>
+            {complaintChartData.map((item) => (
+              <div key={item.label} style={styles.barRow}>
+                <span style={styles.barLabel}>{item.label}</span>
+                <div style={styles.barTrack}>
+                  <div
+                    style={{
+                      ...styles.barFill,
+                      width: `${item.percent}%`,
+                      background: item.label === 'Open' ? '#f97316' : '#22c55e',
+                    }}
+                  />
+                </div>
+                <strong>{item.count}</strong>
               </div>
             ))}          </div>
         </div>
@@ -1247,6 +1447,18 @@ export default function App() {
                 onChange={(e) => setRoomSearch(e.target.value)}
               />
 
+              <select
+                aria-label="Room Status Filter"
+                style={styles.select}
+                value={roomStatusFilter}
+                onChange={(e) => setRoomStatusFilter(e.target.value)}
+              >
+                <option value="All">All Room Status</option>
+                <option value="Empty">Empty Rooms</option>
+                <option value="Partial">Partially Filled</option>
+                <option value="Full">Full Rooms</option>
+              </select>
+
               {!showRoomNumbers && (
                 <>
                   <div style={styles.hiddenRoomNotice}>
@@ -1274,9 +1486,18 @@ export default function App() {
                         const occupied = currentTenants.filter((t) => t.roomNo === room.roomNo).length;
                         const totalBeds = Number(room.totalBeds || 0);
                         const available = Math.max(0, totalBeds - occupied);
+                        const statusStyle = getRoomStatusStyle(occupied, totalBeds);
 
                         return (
-                          <div key={room.id} style={styles.roomTile}>
+                          <div
+                            key={room.id}
+                            style={{
+                              ...styles.roomTile,
+                              background: statusStyle.bg,
+                              boxShadow: statusStyle.glow,
+                              borderColor: statusStyle.color,
+                            }}
+                          >
                             <button
                               style={styles.roomTitleBtn}
                               onClick={() => openRoomTenants(room.roomNo)}
@@ -1297,6 +1518,9 @@ export default function App() {
                             </div>
 
                             <small>{occupied}/{totalBeds} filled • {available} vacant</small>
+                            <span style={{ ...styles.roomStatusBadge, background: statusStyle.color }}>
+                              {statusStyle.label}
+                            </span>
 
                             {isAdminMode && (
                               <button
@@ -1400,6 +1624,7 @@ export default function App() {
 
                       {isAdminMode && selectedTenantProfile?.id === tenant.id && (
                         <div style={styles.inlineProfileCard}>
+                          <div style={styles.profileRibbon}>DWARAKA TENANT ID</div>
                           <div style={styles.inlineProfileHeader}>
                             <div style={styles.avatarCircleSmall}>
                               {String(tenant.name || 'T').slice(0, 1).toUpperCase()}
@@ -1417,7 +1642,7 @@ export default function App() {
                             <ProfileLine label="Status" value={tenant.status || 'Active'} />
                             <ProfileLine label="Monthly Fee" value={formatCurrency(tenant.monthlyFee || 0)} />
                             <ProfileLine label="Security Deposit" value={formatCurrency(tenant.securityDeposit || 0)} />
-                            <ProfileLine label="Aadhaar No" value={tenant.aadhaarNo || '-'} />
+                            <ProfileLine label="Aadhaar No" value={maskAadhaar(tenant.aadhaarNo)} />
                             <ProfileLine label="Address" value={tenant.address || '-'} />
                           </div>
                         </div>
@@ -2407,6 +2632,53 @@ const styles: any = {
     cursor: 'pointer',
     height: 46,
   },
+
+  statusPills: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 14,
+  },
+  statusPill: {
+    padding: '8px 12px',
+    borderRadius: 999,
+    fontWeight: 900,
+    fontSize: 13,
+  },
+  heatRow: {
+    display: 'grid',
+    gridTemplateColumns: '120px 1fr 52px',
+    gap: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+    fontSize: 13,
+    color: '#f8fafc',
+  },
+  heatFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  roomStatusBadge: {
+    display: 'inline-flex',
+    marginTop: 8,
+    color: 'white',
+    padding: '5px 10px',
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  profileRibbon: {
+    background: 'linear-gradient(135deg,#f59e0b,#facc15)',
+    color: '#422006',
+    fontWeight: 900,
+    textAlign: 'center',
+    padding: '7px 10px',
+    borderRadius: 999,
+    marginBottom: 12,
+    letterSpacing: 1,
+    fontSize: 12,
+  },
+
   profileBtn: {
     border: 'none',
     background: 'linear-gradient(135deg,#facc15,#f97316)',
